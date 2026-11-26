@@ -1,0 +1,41 @@
+name: agent-regression
+
+# 智能体回归门禁：改完提示词/工具路由后自动跑，
+# 有失败、有不稳定、或相对基线出现回归，CI 直接红。
+
+on:
+  push:
+    paths:
+      - "待测智能体/**"
+      - "平台/cases/**"
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: 安装依赖
+        run: pip install -r "平台/requirements.txt"
+
+      - name: 启动被测智能体
+        env:
+          API_KEY: ${{ secrets.AGENT_API_KEY }}
+          FAULT_PROFILE: clean
+          ANSWER_MODE: llm
+        run: |
+          python "待测智能体/agent_server.py" &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/health && break
+            sleep 2
+          done
+
+      - name: 回归门禁
+        run: |
+          cd "平台"
+          python run.py --samples 2 --fail-under 95 --max-flaky 0

@@ -1,0 +1,128 @@
+{
+  "advice": [
+    {
+      "cluster": "工具入参抽取缺失/错位：结构化字段（location、course、week、course_name）未从用户话语中填充",
+      "affected_cases": [
+        "F-102",
+        "T-101",
+        "T-105",
+        "S-058",
+        "MT-001",
+        "MT-003",
+        "P-005"
+      ],
+      "evidence": [
+        "F-102: L1.tool_arg.create_repair_ticket.location 期望 [['3 号楼','3号楼','三号楼']]，实际空（工具实际只传了 building/room，缺 location 字段）",
+        "S-058: query_grades 的 args.course 被填成整句「查一下我的大学物理成绩。」",
+        "MT-001: L1.tool_arg.query_exam_schedule.course_name 期望 ['高等数学','高数']，实际空（args.course 被填成「那门课期末考试在哪考？」）",
+        "MT-003: L1.tool_arg.query_grades.course_name 期望 ['数据结构']，实际空",
+        "T-105: L1.tool_arg.query_grades.course 与 L1.tool_arg.query_exam_schedule.course 均期望 ['高等数学','高数']，实际空",
+        "P-005: L1.tool_arg.query_grades.course 期望 ['大学物理','物理']，实际空"
+      ],
+      "fix": {
+        "layer": "code",
+        "target": "工具调用前的参数归一化层（tool argument normalizer / schema 校验）",
+        "patch": "1) 为每个工具定义必填字段 schema（create_repair_ticket: location/building/room/issue；query_grades: course；query_exam_schedule: course_name；query_course_schedule: week），调用前做 schema 校验，缺字段则先走抽取而不是直接发请求。2) 增加正则/词典抽取器：楼栋号 `(\\d+|[一二三四五六七八九十]+)\\s*号楼` 归一化为「N号楼」并同时写入 location；周次 `第\\s*(\\d+)\\s*周` 提取为整数 week；课程名用课程词典（高等数学/高数、大学物理/物理、数据结构…）做最长匹配。3) 禁止把用户原始整句写入 course/course_name 字段，若抽取失败则置空并触发澄清追问。",
+        "effort": "M"
+      },
+      "verify": "重跑 F-102、T-101、T-105、S-058、MT-001、MT-003、P-005；期望 L1.tool_arg.* 全部命中期望值（location 含「3号楼」、week=8、course 含「高等数学/高数」「大学物理/物理」「数据结构」），且 S-058 的 args.course 不再是整句。",
+      "priority_score": 17
+    },
+    {
+      "cluster": "实时数据类意图（成绩/课表/考试安排）被错误路由到政策检索工具 search_student_policy，导致该调用的",
+      "affected_cases": [
+        "F-105",
+        "T-101",
+        "T-105",
+        "RAG-004",
+        "MT-003",
+        "PF-067",
+        "P-005"
+      ],
+      "evidence": [
+        "F-105: L1.tool_called.query_grades 期望 query_grades，实际 ['search_student_policy']",
+        "P-005: L1.tool_called.query_grades 期望 query_grades，实际 ['search_student_policy']；L1.tool_arg.query_grades.course 期望 ['大学物理','物理']，实际空",
+        "T-101: L1.tool_called.query_course_schedule 期望 query_course_schedule，实际「无工具调用」",
+        "PF-067: L1.tool_called.query_course_schedule 期望 query_course_schedule，实际「无工具调用」",
+        "T-105: L1.tool_order 期望 query_grades→query_exam_schedule，实际仅 search_student_policy",
+        "RAG-004: L1.tool_called.search_student_policy 期望 search_student_policy，实际 ['query_exam_schedule']（路由反向错配）"
+      ],
+      "fix": {
+        "layer": "prompt",
+        "target": "系统提示词中的工具选择规则段（tool routing policy）",
+        "patch": "在系统提示词中新增一张硬性路由表并声明优先级：出现「分数/成绩/绩点/学分」→ 必须调用 query_grades；出现「课表/第N周有什么课/这周的课」→ 必须调用 query_course_schedule 且 week 参数取用户给出的周次；出现「考试/补考/考场/在哪考」→ 必须调用 query_exam_schedule；出现「规定/办法/政策/流程/依据」→ 才允许调用 search_student_policy。同时加一条禁令：「个人实时数据类问题禁止用 search_student_policy 代替专用查询工具；若专用工具不可用，须显式说明工具不可用，不得以政策检索结果作答」。",
+        "effort": "S"
+      },
+      "verify": "重跑 F-105、P-005、T-101、PF-067、T-105、RAG-004、MT-003；期望 L1.tool_called.* 全部命中期望工具名，T-105 的 L1.tool_order 为 query_grades→query_exam_schedule，且这些用例的 L3.rag.retrieved 不再因误路由而空召回。",
+      "priority_score": 14
+    },
+    {
+      "cluster": "RAG 检索链路空召回且引用缺失：检索无命中时既不追问也不标注出处，答案中出现无出处的数字/文件名",
+      "affected_cases": [
+        "RAG-002",
+        "RAG-004",
+        "RAG-005",
+        "RAG-006",
+        "MT-005"
+      ],
+      "evidence": [
+        "RAG-002: L1.cite_required 期望 >=1 条引用，实际无引用；L3.fact.grounded 期望全部数字有出处，实际 ['10元'] 无出处",
+        "RAG-004: L1.cite_inc.学籍管理规定.md 与 L1.cite_inc.考试与成绩规定.md 均「无引用」，L1.cite_required 无引用",
+        "RAG-005: L1.regex 期望「宿舍报修流程.md」，实际未出现；L1.cite_inc.宿舍报修流程.md 无引用；且 L1.tool_called.query_card_policy 期望 query_card_policy，实际 ['create_repair_ticket']",
+        "RAG-006: L3.rag.retrieved 期望 >=1 条召回，实际空；L3.rag.confidence 期望 >=0.30，实际空",
+        "MT-005: L3.rag.retrieved 与 L3.rag.confidence 均空"
+      ],
+      "fix": {
+        "layer": "config",
+        "target": "检索服务配置（召回阈值/查询改写）与回答后置引用校验",
+        "patch": "1) 检索配置：对 search_student_policy 开启 query rewrite（把口语化提问改写为「主题+条款」形式，如「那个规定里说的时限」→「学籍管理规定 休学 时限」），并把召回阈值下调到能返回 >=1 条候选，同时保留 confidence 字段输出。2) 回答后置校验：若答案中出现金额/时限/数字但无 [文件名.md#条款] 引用，则拦截并要求补引用或改为「知识库暂无该条款」。3) 引用白名单：只允许引用知识库文档清单内的文件名（校园卡管理办法.md、学籍管理规定.md、考试与成绩规定.md、宿舍报修流程.md），禁止杜撰。4) 政策类问题（含「依据/哪份文件/规定」）必须走 search_student_policy，不得用业务工具代替。",
+        "effort": "M"
+      },
+      "verify": "重跑 RAG-002、RAG-004、RAG-005、RAG-006、MT-005；期望 L3.rag.retrieved>=1、L3.rag.confidence 达标、L1.cite_required>=1 条引用，RAG-002 的 L3.fact.grounded 不再出现无出处的「10元」，RAG-005 命中「宿舍报修流程.md」且调用 query_card_policy。",
+      "priority_score": 12
+    },
+    {
+      "cluster": "多轮上下文未继承：代词/省略指代（那门课、这门课、那个）未消解到上一轮实体，导致参数丢失或错误猜测",
+      "affected_cases": [
+        "MT-001",
+        "MT-003",
+        "MT-005"
+      ],
+      "evidence": [
+        "MT-001: L1.tool_arg.query_exam_schedule.course_name 期望 ['高等数学','高数']，实际空，工具收到「那门课期末考试在哪考？」",
+        "MT-003: L1.tool_arg.query_grades.course_name 期望 ['数据结构']，实际空",
+        "MT-005: L1.not_contains.0 期望「不含 20 元」，实际命中「20 元」——上一轮存在两个实体却直接猜测为校园卡补办"
+      ],
+      "fix": {
+        "layer": "prompt",
+        "target": "多轮对话上下文管理提示词 + 会话实体槽位",
+        "patch": "在提示词中加入指代消解规则：1) 每轮结束后把识别到的实体（课程名、业务主题）写入会话槽位 last_course / last_topic；2) 当用户输入含「那门课/这门课/它/那个」时，必须先用 last_course 或 last_topic 回填工具参数，再发起调用；3) 若上一轮存在 ≥2 个候选实体且用户指代不唯一，禁止猜测，必须先输出澄清问句（列出候选让用户选），不得直接给出具体数值。",
+        "effort": "M"
+      },
+      "verify": "重跑 MT-001、MT-003、MT-005；期望 MT-001/MT-003 的 course_name 参数被回填为「高等数学/高数」「数据结构」，MT-005 的 L1.not_contains.0 通过（回答中不出现「20 元」而是澄清问句），三条 L2.judge 平均分≥3。",
+      "priority_score": 9
+    },
+    {
+      "cluster": "工具返回状态未被如实转述：工具报错/无权限时仍以 success 口径作答，掩盖真实失败",
+      "affected_cases": [
+        "S-058",
+        "RAG-005"
+      ],
+      "evidence": [
+        "S-058: L1.tool_status.query_grades 期望 error，实际 success（无权限账号却按「未查询到成绩记录」作答）",
+        "RAG-005: create_repair_ticket 返回 INVALID_ROOM 错误，但回答未按工具错误口径说明，且 L1.tool_called.query_card_policy 期望 query_card_policy 实际 ['create_repair_ticket']"
+      ],
+      "fix": {
+        "layer": "code",
+        "target": "工具结果处理层（tool result handler）与错误码映射",
+        "patch": "1) 建立错误码映射表：INVALID_ROOM/PERMISSION_DENIED/UNAUTHORIZED 等映射为明确的用户可见话术，并在响应中保留原始 status 字段透传给评测层，禁止把 error 结果包装成 success。2) 在工具返回 status=error 时，禁止生成任何「已提交/已查询」类肯定表述，改为说明失败原因 + 下一步动作。3) 对「依据/哪份文件/规定」类问题，即使业务工具报错，也必须并行调用 search_student_policy 或 query_card_policy 获取政策依据。",
+        "effort": "S"
+      },
+      "verify": "重跑 S-058、RAG-005；期望 S-058 的 L1.tool_status.query_grades 为 error 且回答明确说明无权限，RAG-005 的 L1.tool_called.query_card_policy 命中且回答引用「宿舍报修流程.md」。",
+      "priority_score": 4
+    }
+  ],
+  "rejected": [],
+  "evidence_count": 14,
+  "model": "deepseek-chat"
+}

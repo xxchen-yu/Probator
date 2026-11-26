@@ -1,0 +1,2889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Probator · 智能体回归测试与上线门禁</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="alternate icon" href="/static/favicon.svg">
+<style>
+:root{
+  --bg:#f4f6f9; --panel:#fff; --line:#e2e6ec; --line-soft:#eef1f5;
+  --text:#171e2b; --muted:#68707e; --faint:#9aa2b1;
+  --brand:#2f6bed; --brand-soft:#eaf0fe;
+  --ok:#12855a; --ok-soft:#e6f5ee;
+  --bad:#c02b2b; --bad-soft:#fdecec;
+  --warn:#b4600a; --warn-soft:#fff5e6;
+  --radius:10px;
+  --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 12px rgba(16,24,40,.04);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font:14.5px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--brand);text-decoration:none}
+
+/* ---------- 顶栏 ---------- */
+.top{
+  height:64px;display:flex;align-items:center;gap:16px;
+  padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:30;
+}
+.brand{display:flex;align-items:baseline;gap:10px}
+
+/* Probator 字标：字母 o 替换为进度环 */
+.wordmark{
+  display:inline-flex;align-items:center;
+  font-size:21px;font-weight:800;letter-spacing:-.5px;
+  color:var(--text);line-height:1;user-select:none;
+  position:relative;
+}
+/* 方案 B：字标下的渐变基线 */
+.wordmark::after{
+  content:"";position:absolute;left:.5px;bottom:-4px;height:2px;width:64%;
+  border-radius:2px;
+  background:linear-gradient(90deg,#3b74f0 0%,#5b8cff 62%,rgba(91,140,255,0) 100%);
+  transition:width .42s cubic-bezier(.22,.61,.36,1);
+}
+.brand:hover .wordmark::after{width:100%}
+.wordmark .ring-o{
+  width:.65em;height:.65em;display:inline-block;flex:0 0 auto;
+  margin:0 .04em 0 .03em;color:var(--brand);
+  position:relative;top:.115em;
+}
+.wordmark .ring-o svg{display:block;width:100%;height:100%;overflow:visible}
+.wordmark .ring-o .arc{
+  transition:transform .62s cubic-bezier(.22,.61,.36,1);
+  transform-origin:12px 12px;transform:rotate(-90deg);
+}
+.brand:hover .wordmark .ring-o .arc{transform:rotate(180deg)}
+.brand small{font-weight:500;color:var(--faint);font-size:12.5px;letter-spacing:0;padding-left:3px}
+.top .spacer{flex:1}
+
+.pill{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;
+  padding:5px 11px;border-radius:20px;background:#f0f2f6;color:var(--muted);
+  border:1px solid transparent;white-space:nowrap;
+}
+.pill .dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.ok .dot{background:var(--ok);box-shadow:0 0 0 3px rgba(18,133,90,.15)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.bad .dot{background:var(--bad)}
+
+/* ---------- 骨架 ---------- */
+.shell{display:grid;grid-template-columns:286px 1fr;min-height:calc(100vh - 64px)}
+aside{
+  background:var(--panel);border-right:1px solid var(--line);
+  padding:18px 16px;display:flex;flex-direction:column;gap:16px;
+  position:sticky;top:64px;height:calc(100vh - 64px);overflow-y:auto;
+}
+main{padding:20px 24px 60px;min-width:0}
+
+.field{display:flex;flex-direction:column;gap:6px}
+.field > label{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.2px}
+select,input[type=number]{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+  background:#fff;outline:none;transition:border-color .15s,box-shadow .15s;
+}
+select:focus,input:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+.switch{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:#fbfcfd;cursor:pointer}
+.switch span{font-size:13px}
+.switch input{appearance:none;width:36px;height:20px;border-radius:20px;background:#cfd5de;
+  position:relative;cursor:pointer;transition:background .18s;flex:0 0 auto;margin:0}
+.switch input:checked{background:var(--brand)}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;
+  border-radius:50%;background:#fff;transition:transform .18s}
+.switch input:checked::after{transform:translateX(16px)}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px 14px;border-radius:9px;border:1px solid transparent;cursor:pointer;
+  font-weight:600;transition:background .15s,box-shadow .15s;
+}
+.btn-primary{background:var(--brand);color:#fff;box-shadow:0 2px 8px rgba(47,107,237,.25)}
+.btn-primary:hover{background:#2560d8}
+.btn-primary:disabled{background:#c3cddf;box-shadow:none;cursor:not-allowed}
+
+.hr{height:1px;background:var(--line-soft);margin:2px 0}
+.side-title{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--faint);text-transform:uppercase}
+
+/* 历史 */
+.hist{display:flex;flex-direction:column;gap:6px}
+.hist-item{
+  padding:8px 10px;border-radius:8px;border:1px solid transparent;cursor:pointer;
+  display:flex;flex-direction:column;gap:2px;transition:background .12s;
+}
+.hist-item:hover{background:#f5f7fa}
+.hist-item.active{background:var(--brand-soft);border-color:#cfdcfd}
+.hist-item .l1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.hist-item .id{font-size:11px;color:var(--faint);font-family:Consolas,Menlo,monospace}
+.hist-item .sc{font-weight:700;font-size:13px}
+.hist-item .meta{font-size:11px;color:var(--muted)}
+.hist-item{position:relative}
+.hist-item .del{position:absolute;right:6px;top:7px;width:18px;height:18px;border-radius:5px;
+  border:none;background:rgba(255,255,255,.9);color:var(--faint);cursor:pointer;
+  display:grid;place-items:center;font-size:11px;line-height:1;opacity:0;
+  transition:opacity .15s,background .15s,color .15s}
+.hist-item:hover .del{opacity:1}
+.hist-item .del:hover{background:var(--bad-soft);color:var(--bad)}
+.hist-item.active .del{background:rgba(255,255,255,.7)}
+
+/* 左栏设置区 */
+.side-bottom{margin-top:auto;padding-top:14px;border-top:1px solid var(--line-soft);
+  display:flex;flex-direction:column;gap:8px}
+.tool-btn{display:flex;align-items:center;gap:8px;width:100%;padding:8px 11px;
+  border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;
+  font-size:12.5px;color:var(--muted);font-weight:500;transition:all .15s}
+.tool-btn:hover{border-color:#f0c9c9;background:var(--bad-soft);color:var(--bad)}
+.tool-btn .ic{font-size:13px}
+.tool-btn.tool-accent:hover{border-color:#cfdcfd;background:var(--brand-soft);color:var(--brand)}
+
+/* 变异体校准 */
+.calib-config{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.calib-config .setblock{grid-column:span 1}
+.calib-config .setblock.full{grid-column:span 2}
+.calib-run{display:none}
+.calib-run.on{display:block}
+.calib-prog{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--muted);
+  padding:10px 12px;background:#fafbfd;border:1px solid var(--line-soft);border-radius:9px;margin-bottom:12px}
+.calib-prog .sp{width:13px;height:13px;border:2px solid var(--brand-soft);border-top-color:var(--brand);
+  border-radius:50%;animation:sp .7s linear infinite;flex:0 0 auto}
+.calib-prog b{color:var(--text)}
+.calib-table td.mono{font-family:Consolas,Menlo,monospace;font-size:12px}
+.calib-last{display:flex;align-items:center;gap:12px;padding:11px 13px;margin-bottom:12px;
+  background:#fafbfd;border:1px solid var(--line-soft);border-radius:9px}
+.calib-last .t{font-size:12.5px;color:var(--muted);flex:1}
+.calib-last .t b{color:var(--text)}
+.calib-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:12px 0}
+.calib-sum .c{border:1px solid var(--line-soft);border-radius:9px;padding:9px 11px;background:#fafbfd}
+.calib-sum .c .k{font-size:11px;color:var(--muted)}
+.calib-sum .c .v{font-size:17px;font-weight:700;margin-top:2px}
+.calib-sum .c .v.ok{color:var(--ok)}
+.calib-sum .c .v.warn{color:var(--warn)}
+.calib-sum .c .v.bad{color:var(--bad)}
+.chip-ok{background:var(--ok-soft);color:var(--ok)}
+.chip-warn{background:var(--warn-soft);color:var(--warn)}
+
+/* AI 生成用例 */
+.dimchips{display:flex;flex-wrap:wrap;gap:7px}
+.dimchips label{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:7px;
+  border:1px solid var(--line);background:#fff;font-size:12px;cursor:pointer;transition:all .13s;user-select:none}
+.dimchips label:hover{border-color:#c9d2e0}
+.dimchips input{appearance:none;width:13px;height:13px;border:1.5px solid #cfd5de;border-radius:4px;
+  margin:0;position:relative;cursor:pointer;transition:all .13s}
+.dimchips input:checked{background:var(--brand);border-color:var(--brand)}
+.dimchips input:checked::after{content:"✓";position:absolute;inset:-3px 0 0 1px;color:#fff;font-size:10px;font-weight:800}
+.dimchips label:has(input:checked){border-color:var(--brand);background:var(--brand-soft);color:var(--brand);font-weight:600}
+
+.genlist{display:flex;flex-direction:column;gap:8px;margin-top:12px;max-height:340px;overflow-y:auto}
+.genitem{display:grid;grid-template-columns:18px 1fr;gap:10px;padding:10px 12px;border-radius:9px;
+  border:1px solid var(--line-soft);background:#fafbfd;transition:border-color .13s}
+.genitem:hover{border-color:#d6deea}
+.genitem input{appearance:none;width:15px;height:15px;border:1.5px solid #cfd5de;border-radius:4px;
+  margin:2px 0 0;position:relative;cursor:pointer}
+.genitem input:checked{background:var(--brand);border-color:var(--brand)}
+.genitem input:checked::after{content:"✓";position:absolute;inset:-3px 0 0 1px;color:#fff;font-size:11px;font-weight:800}
+.genitem .head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.genitem .cid{font-family:Consolas,Menlo,monospace;font-size:11.5px;font-weight:700;color:var(--brand)}
+.genitem .gt{font-size:12.5px;font-weight:600}
+.genitem .row{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+.genitem .row b{color:var(--text);font-weight:600}
+.genitem .ass{font-family:Consolas,Menlo,monospace;font-size:10.5px;color:#5a6478;
+  background:#fff;border:1px solid var(--line-soft);border-radius:6px;padding:5px 7px;margin-top:5px;
+  max-height:64px;overflow:auto;word-break:break-all}
+.rejbox{margin-top:12px;border:1px solid #f5ddb8;background:var(--warn-soft);border-radius:9px;padding:10px 12px}
+.rejbox .t{font-size:12px;font-weight:700;color:var(--warn);margin-bottom:6px}
+.rejbox .r{font-size:11.5px;color:#8d4c07;line-height:1.6}
+.tool-note{font-size:10.5px;color:var(--faint);padding-left:2px;line-height:1.5}
+
+/* ---------- 结果看板 ---------- */
+.hero{
+  display:grid;grid-template-columns:200px 1fr;gap:22px;align-items:center;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:20px;box-shadow:var(--shadow);margin-bottom:14px;
+}
+.ring{width:160px;height:160px;border-radius:50%;display:grid;place-items:center;position:relative;
+  background:conic-gradient(var(--brand) 0deg,var(--line-soft) 0deg);margin:0 auto}
+.ring::after{content:"";position:absolute;inset:12px;border-radius:50%;background:var(--panel)}
+.ring .inner{position:relative;z-index:1;text-align:center}
+.ring .num{font-size:38px;font-weight:800;letter-spacing:-1px;line-height:1}
+.ring .unit{font-size:12px;color:var(--muted);margin-top:4px}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.kpi{background:#fafbfd;border:1px solid var(--line-soft);border-radius:9px;padding:10px 12px}
+.kpi .k{font-size:11px;color:var(--muted);margin-bottom:3px}
+.kpi .v{font-size:19px;font-weight:700;letter-spacing:-.3px}
+.kpi .v small{font-size:12px;font-weight:500;color:var(--faint)}
+.kpi.good .v{color:var(--ok)}
+.kpi.bad .v{color:var(--bad)}
+.kpi.warn .v{color:var(--warn)}
+
+.runbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;font-size:12px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:6px;
+  background:#eef1f6;color:#43506a;font-size:11px;font-weight:600}
+.chip.mode{background:var(--brand-soft);color:var(--brand)}
+.chip.fail{background:var(--bad-soft);color:var(--bad)}
+.chip.flaky{background:var(--warn-soft);color:var(--warn)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+.panel-head{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-soft)}
+.panel-head h3{margin:0;font-size:14px;font-weight:700}
+.panel-head .sub{font-size:12px;color:var(--faint)}
+.panel-body{padding:16px}
+
+/* 维度 */
+.dims{display:flex;flex-direction:column;gap:11px}
+.dim{display:grid;grid-template-columns:120px 1fr 92px;gap:12px;align-items:center}
+.dim .name{font-size:13px;font-weight:600}
+.dim .name em{font-style:normal;color:var(--faint);font-weight:400;font-size:11px}
+.bar{height:8px;border-radius:6px;background:#eef1f5;overflow:hidden}
+.bar > i{display:block;height:100%;border-radius:6px;background:var(--brand);transition:width .5s ease}
+.bar.ok > i{background:var(--ok)}
+.bar.bad > i{background:var(--bad)}
+.bar.warn > i{background:var(--warn)}
+.dim .val{text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.dim .val b{color:var(--text);font-size:13px}
+
+/* 三层 */
+.layers{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.layer{border:1px solid var(--line-soft);border-radius:9px;padding:12px;background:#fafbfd}
+.layer .lt{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;gap:8px}
+.layer .lt b{font-size:13px}
+.layer .lt span{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.layer .desc{font-size:11px;color:var(--faint);margin-top:7px;line-height:1.45}
+
+/* 用例表 */
+.filters{display:flex;flex-wrap:wrap;gap:7px;padding:12px 16px;border-bottom:1px solid var(--line-soft);align-items:center}
+.fbtn{padding:5px 11px;border-radius:7px;border:1px solid var(--line);background:#fff;cursor:pointer;
+  font-size:12px;font-weight:600;color:var(--muted);transition:all .12s}
+.fbtn:hover{border-color:#c9d2e0}
+.fbtn.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.filters select{width:auto;padding:5px 9px;font-size:12px;margin-left:auto}
+
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:9px 16px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+th{font-size:11px;font-weight:700;color:var(--faint);letter-spacing:.5px;text-transform:uppercase;
+  background:#fbfcfd}
+tbody tr{cursor:pointer;transition:background .1s}
+tbody tr:hover{background:#f8fafd}
+td.id{font-family:Consolas,Menlo,monospace;font-size:12px;white-space:nowrap;font-weight:600}
+td.title .t{font-weight:500}
+td.title .cause{font-size:11px;color:var(--faint);margin-top:2px}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:5px;font-weight:600;background:#eef1f6;color:#475569}
+.tag.pass{background:var(--ok-soft);color:var(--ok)}
+.tag.fail{background:var(--bad-soft);color:var(--bad)}
+.tag.flaky{background:var(--warn-soft);color:var(--warn)}
+.tag.blocker{background:var(--bad-soft);color:var(--bad)}
+.tag.major{background:var(--warn-soft);color:var(--warn)}
+.tag.minor{background:#eef1f6;color:#5a6478}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}
+.empty{padding:44px 20px;text-align:center;color:var(--faint)}
+.empty .big{font-size:15px;color:var(--muted);margin-bottom:6px;font-weight:600}
+
+/* 抽屉 */
+.drawer-mask{position:fixed;inset:0;background:rgba(16,24,40,.32);opacity:0;pointer-events:none;
+  transition:opacity .2s;z-index:40}
+.drawer-mask.on{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:0;right:0;height:100vh;width:min(760px,94vw);background:var(--panel);
+  box-shadow:-18px 0 50px rgba(16,24,40,.14);transform:translateX(100%);
+  transition:transform .26s cubic-bezier(.4,0,.2,1);z-index:41;display:flex;flex-direction:column;
+}
+.drawer.on{transform:none}
+.drawer-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:flex-start}
+.drawer-head .grow{flex:1;min-width:0}
+.drawer-head h3{margin:0 0 4px;font-size:15px}
+.drawer-head .sub{font-size:12px;color:var(--muted)}
+.drawer-body{padding:18px 20px 40px;overflow-y:auto}
+.xbtn{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:#fff;
+  cursor:pointer;display:grid;place-items:center;color:var(--muted);flex:0 0 auto}
+.xbtn:hover{background:#f4f6f9}
+
+.sec-t{font-size:11px;font-weight:700;letter-spacing:.7px;color:var(--faint);
+  text-transform:uppercase;margin:20px 0 10px}
+.sec-t:first-child{margin-top:0}
+
+.qa{background:#fafbfd;border:1px solid var(--line-soft);border-radius:9px;padding:12px 14px;
+  font-size:13px;white-space:pre-wrap;word-break:break-word}
+.qa.user{background:var(--brand-soft);border-color:#d6e2fd}
+
+.checks{display:flex;flex-direction:column;gap:5px}
+.ck{display:grid;grid-template-columns:16px 1fr;gap:9px;padding:7px 10px;border-radius:7px;
+  background:#fafbfd;border:1px solid var(--line-soft);font-size:12px}
+.ck.bad{background:var(--bad-soft);border-color:#f7d6d6}
+.ck.ok{background:#fafbfd}
+.ck.skip{background:#f6f7f9;opacity:.72}
+.ck .ic{font-weight:800;line-height:1.4}
+.ck.bad .ic{color:var(--bad)}
+.ck.ok .ic{color:var(--ok)}
+.ck.skip .ic{color:var(--faint)}
+.ck .lb{font-weight:500}
+.ck .ev{color:var(--muted);margin-top:2px;font-size:11px;font-family:Consolas,Menlo,monospace;word-break:break-all}
+.ck .lay{font-size:10px;font-weight:700;color:var(--faint);margin-right:5px;letter-spacing:.4px}
+
+/* trace 时间线 */
+.tl{position:relative;padding-left:22px}
+.tl::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--line-soft)}
+.tl .ev{position:relative;margin-bottom:10px}
+.tl .ev::before{content:"";position:absolute;left:-20px;top:7px;width:9px;height:9px;border-radius:50%;
+  background:#c8d0dd;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.tl .ev.plan::before{background:var(--brand)}
+.tl .ev.retrieval::before{background:#7c5cff}
+.tl .ev.tool::before{background:var(--ok)}
+.tl .ev.tool.error::before{background:var(--bad)}
+.tl .ev.answer::before{background:#0ea5a5}
+.tl .ev .box{background:#fafbfd;border:1px solid var(--line-soft);border-radius:8px;padding:8px 11px}
+.tl .ev .k{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
+.tl .ev .v{font-size:12px;margin-top:3px;font-family:Consolas,Menlo,monospace;
+  white-space:pre-wrap;word-break:break-word;color:#33405a;max-height:150px;overflow:auto}
+
+/* 对比 */
+.diffgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.dcard{border:1px solid var(--line-soft);border-radius:9px;padding:10px 12px;background:#fafbfd}
+.dcard .k{font-size:11px;color:var(--muted)}
+.dcard .v{font-size:17px;font-weight:700;margin-top:2px}
+.dcard .v.up{color:var(--ok)}
+.dcard .v.down{color:var(--bad)}
+.warnline{background:var(--warn-soft);color:var(--warn);border:1px solid #f5ddb8;
+  border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:12px}
+
+/* 新建测试弹层 */
+.btn-block{width:100%}
+.setup-mask{
+  position:fixed;inset:0;background:rgba(16,24,40,.42);display:flex;align-items:center;justify-content:center;
+  padding:24px;opacity:0;pointer-events:none;transition:opacity .18s;z-index:50;
+}
+.setup-mask.on{opacity:1;pointer-events:auto}
+.setup{
+  width:min(620px,100%);background:var(--panel);border-radius:14px;overflow:hidden;
+  box-shadow:0 24px 60px rgba(16,24,40,.22);transform:translateY(10px) scale(.99);
+  transition:transform .2s cubic-bezier(.4,0,.2,1);max-height:88vh;display:flex;flex-direction:column;
+}
+.setup-mask.on .setup{transform:none}
+.setup-head{display:flex;align-items:flex-start;gap:12px;padding:18px 20px;border-bottom:1px solid var(--line)}
+.setup-head > div:first-child{flex:1;min-width:0}
+.setup-head .xbtn{margin-left:auto;flex:0 0 auto}
+.setup-head h3{margin:0 0 3px;font-size:16px}
+.setup-head .sub{font-size:12px;color:var(--muted)}
+.setup-body{padding:18px 20px;overflow-y:auto}
+.setup-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;
+  border-top:1px solid var(--line);background:#fafbfd}
+.setblock textarea{
+  width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+  font:12px/1.5 Consolas,Menlo,monospace;resize:vertical;outline:none;background:#fff;
+}
+.setblock textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.setgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.setblock{border:1px solid var(--line);border-radius:10px;padding:12px 13px;background:#fff;
+  display:flex;flex-direction:column;gap:7px}
+.setblock.span2{grid-column:span 2}
+.setblock > label{font-size:12px;font-weight:600;color:var(--muted)}
+.setblock label.inline{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.setblock label.inline span{font-size:13px;font-weight:600;color:var(--text)}
+.sethint{font-size:11px;color:var(--faint);line-height:1.4}
+.sethint.ok{color:var(--ok)}
+.sethint.bad{color:var(--bad)}
+.tog{appearance:none;width:36px;height:20px;border-radius:20px;background:#cfd5de;
+  position:relative;cursor:pointer;transition:background .18s;flex:0 0 auto;margin:0}
+.tog:checked{background:var(--brand)}
+.tog::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;
+  border-radius:50%;background:#fff;transition:transform .18s}
+.tog:checked::after{transform:translateX(16px)}
+@media (max-width:640px){ .setgrid{grid-template-columns:1fr} .setblock.span2{grid-column:span 1} }
+
+/* 执行中进度看板 · 节点式阶段流水线 */
+.prog{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+.prog-head{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-soft)}
+.prog-head h3{margin:0;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;
+  color:var(--brand);background:var(--brand-soft);padding:2px 9px;border-radius:20px}
+.live .b{width:7px;height:7px;border-radius:50%;background:var(--brand);animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
+
+.prog-main{display:grid;grid-template-columns:180px 1fr;gap:22px;align-items:center;padding:20px 16px}
+.pring{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;position:relative;
+  background:conic-gradient(var(--brand) 0deg,#eef1f5 0deg);margin:0 auto}
+.pring::after{content:"";position:absolute;inset:11px;border-radius:50%;background:var(--panel)}
+.pring .pin{position:relative;z-index:1;text-align:center}
+.pring .pn{font-size:34px;font-weight:800;letter-spacing:-1px;line-height:1;color:var(--brand)}
+.pring .pu{font-size:11px;color:var(--muted);margin-top:3px}
+
+.pinfo{display:flex;flex-direction:column;gap:14px;min-width:0}
+.pmeta{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pmeta b{color:var(--text);font-weight:700;font-size:13px}
+.pmeta .bad{color:var(--bad)}
+.pmeta .warn{color:var(--warn)}
+
+/* 节点式流水线 */
+.stepper{display:flex;align-items:flex-start;width:100%}
+.step{display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto;width:88px}
+.step .dot{width:28px;height:28px;border-radius:50%;border:2px solid var(--line);background:#fff;
+  display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--faint);
+  position:relative;z-index:1;transition:all .25s ease}
+.step .lb{font-size:12px;color:var(--faint);text-align:center;line-height:1.3;transition:color .25s}
+.step .cnt{font-size:10.5px;color:var(--faint);font-variant-numeric:tabular-nums;min-height:14px}
+.step.done .dot{background:var(--ok);border-color:var(--ok);color:#fff}
+.step.done .lb{color:var(--text)}
+.step.done .cnt{color:var(--ok)}
+.step.active .dot{border-color:var(--brand);color:var(--brand);background:var(--brand-soft)}
+.step.active .dot::after{content:"";position:absolute;inset:-5px;border-radius:50%;
+  border:2px solid var(--brand);animation:ring 1.2s ease-out infinite}
+@keyframes ring{0%{transform:scale(.85);opacity:.55}100%{transform:scale(1.35);opacity:0}}
+.step.active .lb{color:var(--brand);font-weight:700}
+.step.active .cnt{color:var(--brand)}
+.stepline{flex:1 1 auto;height:2px;background:var(--line);margin-top:13px;min-width:14px;
+  border-radius:1px;transition:background .3s ease}
+.stepline.done{background:var(--ok)}
+
+.psec{padding:0 16px 16px}
+.psec-t{font-size:11px;font-weight:700;letter-spacing:.7px;color:var(--faint);
+  text-transform:uppercase;margin:14px 0 9px}
+.pdims{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px 20px}
+.pdim{display:grid;grid-template-columns:96px 1fr 62px;gap:10px;align-items:center}
+.pdim .pn2{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdim .pb{height:6px;border-radius:5px;background:#eef1f5;overflow:hidden}
+.pdim .pb > i{display:block;height:100%;border-radius:5px;background:var(--brand);transition:width .4s ease;width:0}
+.pdim .pv{font-size:11px;color:var(--faint);text-align:right;font-variant-numeric:tabular-nums}
+.pdim.done .pn2{color:var(--text)}
+.pdim.done .pb > i{background:var(--ok)}
+
+.lchips{display:flex;flex-wrap:wrap;gap:8px}
+.lchip{display:flex;align-items:center;gap:8px;border:1px solid var(--line-soft);border-radius:9px;
+  padding:8px 12px;background:#fafbfd;font-size:12px;min-width:150px}
+.lchip .lk{font-weight:700;color:var(--muted);font-size:11px;letter-spacing:.4px}
+.lchip .lv{font-variant-numeric:tabular-nums;color:var(--text);font-weight:600}
+.lchip .lbar{flex:1;height:5px;border-radius:4px;background:#eef1f5;overflow:hidden;min-width:34px}
+.lchip .lbar > i{display:block;height:100%;border-radius:4px;background:var(--ok);transition:width .4s}
+
+@media (max-width:860px){ .prog-main{grid-template-columns:1fr} }
+
+/* 结论摘要 */
+.hero-right{display:flex;flex-direction:column;gap:11px;min-width:0}
+.verdict{display:flex;align-items:flex-start;gap:9px;padding:10px 13px;border-radius:9px;
+  background:#fafbfd;border:1px solid var(--line-soft);font-size:12.5px;line-height:1.6;color:var(--muted)}
+.verdict b{color:var(--text);font-weight:700}
+.verdict .ic{font-weight:800;flex:0 0 auto;line-height:1.5}
+.verdict.ok{background:var(--ok-soft);border-color:#cdeada;color:#0f6b49}
+.verdict.warn{background:var(--warn-soft);border-color:#f5ddb8;color:#8d4c07}
+.verdict.bad{background:var(--bad-soft);border-color:#f7d6d6;color:#a02424}
+
+/* 维度：最弱标记 + 60% 达标线 */
+.dim.weak .name{color:var(--bad)}
+.dim.weak .val b{color:var(--bad)}
+.bar{position:relative}
+.bar .mark{position:absolute;top:-3px;bottom:-3px;width:2px;background:#c02b2b;opacity:.35;border-radius:1px}
+.bar .mark::after{content:"60";position:absolute;top:-14px;left:-7px;font-size:9px;color:#c02b2b;opacity:.75}
+.dim .name .wtag{display:inline-block;margin-left:5px;font-size:9.5px;font-weight:700;
+  padding:0 5px;border-radius:4px;background:var(--bad-soft);color:var(--bad);vertical-align:1px}
+
+/* 用例表搜索 */
+.searchwrap{position:relative;display:flex;align-items:center;margin-left:auto}
+.searchwrap input{width:158px;padding:5px 9px 5px 25px;font-size:12px;border:1px solid var(--line);
+  border-radius:7px;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+.searchwrap input:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.searchwrap .ic{position:absolute;left:8px;font-size:12px;color:var(--faint);pointer-events:none}
+
+/* 维度彩色标签 */
+.tag.d-functional{background:#e8f0fe;color:#1a56c4}
+.tag.d-tool_invocation{background:#e9f7ef;color:#12855a}
+.tag.d-rag{background:#f3ecfe;color:#6b3fc4}
+.tag.d-multiturn{background:#e6f6f8;color:#0b7285}
+.tag.d-safety{background:#fdeaea;color:#b32020}
+.tag.d-boundary{background:#fff4e5;color:#a05a00}
+.tag.d-performance{background:#eef1f6;color:#5a6478}
+
+/* 抽屉断言分组 */
+.grp{display:flex;align-items:center;gap:8px;margin:14px 0 7px}
+.grp .gt{font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--muted)}
+.grp .n{border-radius:20px;padding:1px 8px;font-size:10.5px;font-weight:700;
+  background:#eef1f6;color:#43506a}
+.grp.bad .gt{color:var(--bad)}
+.grp.bad .n{background:var(--bad-soft);color:var(--bad)}
+.grp.ok .gt{color:var(--ok)}
+.grp.ok .n{background:var(--ok-soft);color:var(--ok)}
+.grp.skip .gt{color:var(--faint)}
+.grp.skip .n{background:#eef1f6;color:var(--faint)}
+.grp .line{flex:1;height:1px;background:var(--line-soft)}
+
+/* 表格交互与焦点 */
+tbody tr:hover{background:#f4f8ff}
+tbody tr:hover td.id{color:var(--brand)}
+tbody tr:focus{outline:none}
+button:focus-visible,input:focus-visible,select:focus-visible,tbody tr:focus-visible{
+  outline:2px solid var(--brand);outline-offset:2px}
+
+/* 滚动条 */
+aside::-webkit-scrollbar,.drawer-body::-webkit-scrollbar{width:8px}
+aside::-webkit-scrollbar-thumb,.drawer-body::-webkit-scrollbar-thumb{background:#d6dbe4;border-radius:4px}
+aside::-webkit-scrollbar-thumb:hover,.drawer-body::-webkit-scrollbar-thumb:hover{background:#c2c9d6}
+
+/* KPI 微交互 */
+.kpi{transition:border-color .15s,transform .15s}
+.kpi:hover{border-color:#d6deea;transform:translateY(-1px)}
+
+/* ---------- 流畅动效 / 现代前端细节 ---------- */
+/* 尊重系统的「减少动态效果」设置 */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms !important;animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;scroll-behavior:auto !important;
+  }
+}
+/* 数字等宽，避免跳动 */
+.pn,.kpi .v,.dim .val,.pmeta,.step .cnt,.dcard .v{font-variant-numeric:tabular-nums}
+/* 分数环平滑过渡 */
+.pring{transition:background .55s cubic-bezier(.22,.61,.36,1)}
+/* 视图切换（View Transitions API） */
+::view-transition-old(root){animation:vtOut .18s ease both}
+::view-transition-new(root){animation:vtIn .26s cubic-bezier(.22,.61,.36,1) both}
+@keyframes vtOut{to{opacity:0;transform:translateY(-4px)}}
+@keyframes vtIn{from{opacity:0;transform:translateY(6px)}}
+/* 骨架屏 */
+.skeleton{background:linear-gradient(90deg,#eef1f5 25%,#f7f9fc 37%,#eef1f5 63%);
+  background-size:400% 100%;animation:sk 1.4s ease infinite;border-radius:6px}
+@keyframes sk{0%{background-position:100% 50%}100%{background-position:0 50%}}
+.sk-row{height:12px;margin:9px 0}
+/* 进度卡片上的「流式」提示 */
+.stream-tip{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--faint)}
+.stream-tip .wave{display:inline-flex;gap:2px;align-items:flex-end;height:10px}
+.stream-tip .wave i{width:2px;background:var(--brand);border-radius:1px;animation:wv 1s ease-in-out infinite}
+.stream-tip .wave i:nth-child(1){height:4px;animation-delay:0s}
+.stream-tip .wave i:nth-child(2){height:8px;animation-delay:.15s}
+.stream-tip .wave i:nth-child(3){height:6px;animation-delay:.3s}
+.stream-tip .wave i:nth-child(4){height:9px;animation-delay:.45s}
+@keyframes wv{0%,100%{transform:scaleY(.45);opacity:.5}50%{transform:scaleY(1);opacity:1}}
+
+/* 结果区分页 */
+.tabs{display:flex;gap:4px;align-items:center;margin-bottom:14px;
+  border-bottom:1px solid var(--line);padding-bottom:0}
+.tab{position:relative;padding:9px 15px 10px;border:none;background:none;cursor:pointer;
+  font-size:13.5px;font-weight:600;color:var(--muted);border-radius:8px 8px 0 0;
+  transition:color .15s,background .15s;display:flex;align-items:center;gap:7px}
+.tab:hover{background:#f4f6fa;color:var(--text)}
+.tab.on{color:var(--brand)}
+.tab.on::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;
+  background:var(--brand);border-radius:2px}
+.tab .n{font-size:11px;font-weight:700;padding:1px 7px;border-radius:20px;
+  background:#eef1f6;color:#5a6478}
+.tab.on .n{background:var(--brand-soft);color:var(--brand)}
+.tab .n.bad{background:var(--bad-soft);color:var(--bad)}
+
+/* 表格内部滚动，避免页面被长列表撑爆 */
+.tablewrap{max-height:calc(100vh - 300px);min-height:220px;overflow:auto;border-radius:0 0 10px 10px}
+.tablewrap table{min-width:100%}
+.tablewrap thead th{position:sticky;top:0;z-index:2;background:#fbfcfd;
+  box-shadow:inset 0 -1px 0 var(--line-soft)}
+.tabpane{display:none}
+.tabpane.on{display:block;animation:paneIn .22s cubic-bezier(.22,.61,.36,1) both}
+/* 改进建议 */
+.adv-intro{display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fafbfd;
+  border:1px solid var(--line-soft);border-radius:10px;margin-bottom:14px}
+.adv-intro .txt{font-size:12.5px;color:var(--muted);line-height:1.6;flex:1}
+.adv-intro .txt b{color:var(--text)}
+.advcard{border:1px solid var(--line-soft);border-radius:11px;background:#fff;
+  margin-bottom:12px;overflow:hidden}
+.advcard .hd{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line-soft);
+  background:#fbfcfe}
+.advcard .idx{width:20px;height:20px;border-radius:6px;background:var(--brand);color:#fff;
+  font-size:11px;font-weight:700;display:grid;place-items:center;flex:0 0 auto}
+.advcard .cl{font-size:13.5px;font-weight:700;flex:1}
+.advcard .bd{padding:12px 15px}
+.advcard .row{margin-bottom:9px}
+.advcard .row:last-child{margin-bottom:0}
+.advcard .k{font-size:11px;font-weight:700;color:var(--faint);letter-spacing:.4px;margin-bottom:4px}
+.advcard .cases{display:flex;flex-wrap:wrap;gap:5px}
+.advcard .cases span{font:600 11px/1.6 Consolas,Menlo,monospace;background:#eef1f6;color:#4a5464;
+  border-radius:5px;padding:2px 7px}
+.advcard ul{margin:0;padding-left:16px}
+.advcard ul li{font-size:12px;color:#4a5464;line-height:1.65;margin-bottom:3px;
+  font-family:Consolas,Menlo,monospace;word-break:break-word}
+.advcard .patch{font-size:12.5px;color:var(--text);line-height:1.7;background:#f7f9fc;
+  border-radius:8px;padding:9px 11px;border-left:3px solid var(--brand)}
+.advcard .verify{font-size:12px;color:#4a5464;line-height:1.65}
+.advcard .badges{display:flex;gap:6px;flex-wrap:wrap}
+.advcard .badges span{font-size:10.5px;font-weight:700;border-radius:5px;padding:3px 8px}
+.bg-layer{background:var(--brand-soft);color:var(--brand)}
+.bg-effort{background:#eef1f6;color:#4a5464}
+.adv-empty{padding:46px 20px;text-align:center;color:var(--muted);font-size:13px}
+.adv-empty .big{font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px}
+@keyframes paneIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);opacity:0;
+  background:#1b2330;color:#fff;padding:10px 18px;border-radius:9px;font-size:13px;
+  transition:all .22s;pointer-events:none;z-index:60}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;
+  border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (max-width:960px){
+  .shell{grid-template-columns:1fr}
+  aside{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .hero{grid-template-columns:1fr}
+  .layers{grid-template-columns:1fr}
+  .dim{grid-template-columns:96px 1fr 84px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <span class="wordmark" aria-label="Probator">Pr<span class="ring-o" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#dbe3f2" stroke-width="4"/><circle class="arc" cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="42 57" transform="rotate(-90 12 12)"/></svg></span>bator</span>
+    <small>智能体回归测试与上线门禁</small>
+  </div>
+  <span class="pill" id="health"><span class="dot"></span>检测中…</span>
+  <div class="spacer"></div>
+  <button class="xbtn" id="llmBtn" title="AI 模型设置">⚙</button>
+  <span class="pill" id="runstate" style="display:none"></span>
+</header>
+
+<div class="shell">
+  <aside>
+    <button class="btn btn-primary btn-block" id="newRunBtn">
+      <span style="font-size:16px;line-height:1">＋</span> 添加目标
+    </button>
+    <div class="hr"></div>
+    <div class="side-title">历史运行</div>
+    <div class="hist" id="hist"></div>
+
+    <div class="side-bottom">
+      <div class="side-title">设置</div>
+      <button class="tool-btn tool-accent" id="genBtn">
+        <span class="ic">✧</span><span>AI 生成用例</span>
+      </button>
+      <button class="tool-btn tool-accent" id="calibBtn">
+        <span class="ic">◈</span><span>变异体校准</span>
+      </button>
+      <button class="tool-btn" id="clearRunsBtn">
+        <span class="ic">🗑</span><span>清空历史运行</span>
+      </button>
+      <div class="tool-note" id="runUsage">统计中…</div>
+    </div>
+  </aside>
+
+  <main>
+    <div id="view">
+      <div class="panel">
+        <div class="empty">
+          <div class="big">还没有测试结果</div>
+          <div>左侧选择目标与用例集，点「开始测试」</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="setup-mask" id="setupMask">
+  <div class="setup" id="setupCard">
+    <div class="setup-head">
+      <div>
+        <h3>新建测试</h3>
+        <div class="sub">选择被测目标与执行参数</div>
+      </div>
+      <button class="xbtn" id="setupClose">✕</button>
+    </div>
+
+    <div class="setup-body">
+      <div class="setgrid">
+
+        <div class="setblock span2">
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <span>被测目标</span>
+            <a href="javascript:void(0)" id="openWizard" style="font-weight:600">＋ 接入新目标</a>
+          </label>
+          <select id="target"></select>
+          <div class="sethint" id="targetHint">检测中…</div>
+        </div>
+
+        <div class="setblock span2">
+          <label>用例集</label>
+          <select id="caseFile"></select>
+          <div class="sethint" id="caseHint">覆盖 7 个测试维度</div>
+        </div>
+
+        <div class="setblock">
+          <label>采样次数</label>
+          <input type="number" id="samples" value="1" min="1" max="9">
+          <div class="sethint">大于 1 可检出不稳定用例</div>
+        </div>
+
+        <div class="setblock">
+          <label>并发数</label>
+          <input type="number" id="conc" value="4" min="1" max="16">
+          <div class="sethint">同时执行的用例数</div>
+        </div>
+
+        <div class="setblock span2">
+          <label class="inline">
+            <span>AI 语义判定（L2）</span>
+            <input type="checkbox" id="useJudge" class="tog">
+          </label>
+          <div class="sethint">开启后由大模型按评分标准判断语义，耗时更长</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="setup-foot">
+      <button class="btn btn-ghost" id="setupCancel">取消</button>
+      <button class="btn btn-primary" id="runBtn">开始测试</button>
+    </div>
+  </div>
+</div>
+
+<div class="setup-mask" id="llmMask">
+  <div class="setup" style="width:min(560px,100%)">
+    <div class="setup-head">
+      <div>
+        <h3>AI 模型设置</h3>
+        <div class="sub">用于 L2 语义判定与 AI 自动生成用例，兼容 OpenAI 格式接口</div>
+      </div>
+      <button class="xbtn" id="llmClose">✕</button>
+    </div>
+    <div class="setup-body">
+      <div class="setgrid" style="grid-template-columns:1fr">
+        <div class="setblock">
+          <label>接口地址（base_url）</label>
+          <input type="text" id="llmUrl" placeholder="https://api.deepseek.com/v1" spellcheck="false">
+          <div class="sethint">可只填到 /v1，会自动补全 /chat/completions</div>
+        </div>
+        <div class="setblock">
+          <label>模型名</label>
+          <input type="text" id="llmModel" placeholder="deepseek-chat" spellcheck="false">
+          <div class="sethint">与接口文档中的 model 字段一致，如 gpt-4o-mini、qwen-plus</div>
+        </div>
+        <div class="setblock">
+          <label>API Key</label>
+          <input type="password" id="llmKey" placeholder="留空表示不修改" spellcheck="false">
+          <div class="sethint" id="llmKeyHint">未设置</div>
+        </div>
+      </div>
+      <div id="llmTestMsg" class="sethint" style="margin-top:10px"></div>
+    </div>
+    <div class="setup-foot">
+      <button class="btn btn-ghost" id="llmTestBtn" style="margin-right:auto">测试连接</button>
+      <button class="btn btn-ghost" id="llmCancel">取消</button>
+      <button class="btn btn-primary" id="llmSaveBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="setup-mask" id="wizMask">
+  <div class="setup" style="width:min(680px,100%)">
+    <div class="setup-head">
+      <div>
+        <h3>接入新目标</h3>
+        <div class="sub">填地址 → 探测 → 指定字段 → 保存，之后即可对这一目标跑用例</div>
+      </div>
+      <button class="xbtn" id="wizClose">✕</button>
+    </div>
+    <div class="setup-body">
+
+      <div class="setgrid">
+        <div class="setblock span2">
+          <label>目标名称</label>
+          <input type="text" id="wizName" placeholder="例如：我的客服机器人" spellcheck="false">
+        </div>
+        <div class="setblock">
+          <label>接口地址</label>
+          <input type="text" id="wizBase" placeholder="http://127.0.0.1:9000" spellcheck="false">
+        </div>
+        <div class="setblock">
+          <label>对话路径</label>
+          <input type="text" id="wizPath" placeholder="/chat" value="/chat" spellcheck="false">
+        </div>
+        <div class="setblock span2">
+          <label>额外请求头（JSON，可选）</label>
+          <input type="text" id="wizHeaders" placeholder='{"X-API-Key": "..."}' spellcheck="false">
+          <div class="sethint">目标需要鉴权时填这里</div>
+        </div>
+        <div class="setblock span2">
+          <label>请求体模板（JSON，可选）</label>
+          <textarea id="wizBody" rows="3" spellcheck="false"
+            placeholder='{"query": "{message}", "top_k": 3}'></textarea>
+          <div class="sethint">{message} 会被替换成用例输入。留空则用默认 {"message": "{message}", "session_id": "{session_id}"}</div>
+        </div>
+        <div class="setblock span2">
+          <label>决策链字段（JSON，可选）</label>
+          <textarea id="wizTraceFields" rows="3" spellcheck="false"
+            placeholder='[{"path":"intent","type":"plan","label":"意图"},{"path":"flow_name","type":"step","label":"流程节点"}]'></textarea>
+          <div class="sethint">目标不返回数组型 trace 时，把散装字段组装成决策链。type 可用 plan / step / retrieval / guard</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;margin-top:14px">
+        <button class="btn btn-ghost" id="wizProbeBtn">探测接口</button>
+        <span class="sethint" id="wizProbeMsg">先探测，才能知道响应长什么样</span>
+      </div>
+
+      <div id="wizMap" style="display:none;margin-top:16px">
+        <div class="psec-t" style="margin-top:0">字段映射（填写 JSON 路径，如 choices.0.message.content）</div>
+        <datalist id="wizPaths"></datalist>
+        <div class="setgrid">
+          <div class="setblock">
+            <label>回答字段（必选）</label>
+            <input type="text" id="wizAnswer" list="wizPaths" placeholder="answer" spellcheck="false">
+          </div>
+          <div class="setblock">
+            <label>决策链路字段（可选）</label>
+            <input type="text" id="wizTrace" list="wizPaths" placeholder="trace" spellcheck="false">
+            <div class="sethint">选了才能做 L3 决策判定</div>
+          </div>
+          <div class="setblock">
+            <label>引用字段（可选）</label>
+            <input type="text" id="wizCite" list="wizPaths" placeholder="citations" spellcheck="false">
+          </div>
+          <div class="setblock">
+            <label>决策链路格式</label>
+            <select id="wizNorm">
+              <option value="">原样使用</option>
+              <option value="langchain_steps">LangChain intermediate_steps</option>
+              <option value="generic_steps">通用 steps 数组</option>
+            </select>
+          </div>
+        </div>
+        <details style="margin-top:12px">
+          <summary class="sethint" style="cursor:pointer">查看原始响应</summary>
+          <div class="qa" id="wizRaw" style="margin-top:8px;font-size:11px;max-height:200px;overflow:auto"></div>
+        </details>
+      </div>
+
+    </div>
+    <div class="setup-foot">
+      <button class="btn btn-ghost" id="wizCancel">取消</button>
+      <button class="btn btn-primary" id="wizSaveBtn" disabled>保存目标</button>
+    </div>
+  </div>
+</div>
+
+<div class="setup-mask" id="confirmMask">
+  <div class="setup" style="width:min(430px,100%)">
+    <div class="setup-head">
+      <div>
+        <h3 id="cfTitle">确认操作</h3>
+        <div class="sub" id="cfDesc"></div>
+      </div>
+    </div>
+    <div class="setup-foot">
+      <button class="btn btn-ghost" id="cfCancel">取消</button>
+      <button class="btn btn-primary" id="cfOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<div class="setup-mask" id="calibMask">
+  <div class="setup" style="width:min(820px,100%)">
+    <div class="setup-head">
+      <div>
+        <h3>变异体校准</h3>
+        <div class="sub">用注入缺陷的智能体验证判定器本身：该抓的抓到没有、不该抓的抓了没有</div>
+      </div>
+      <button class="xbtn" id="calibClose">✕</button>
+    </div>
+    <div class="setup-body">
+
+      <div class="calib-config" id="calibCfg">
+        <div class="setblock">
+          <label>被测目标</label>
+          <select id="calibTarget"></select>
+        </div>
+        <div class="setblock">
+          <label>用例集</label>
+          <select id="calibCases"></select>
+        </div>
+        <div class="setblock full">
+          <label>取样条数</label>
+          <select id="calibLimit">
+            <option value="21">21 条（约 2 分钟，覆盖全部维度）</option>
+            <option value="35">35 条（约 4 分钟）</option>
+            <option value="0">全部用例（约 10 分钟以上）</option>
+          </select>
+          <div class="sethint">按维度轮转取样，保证小样本也覆盖七个维度</div>
+        </div>
+      </div>
+
+      <div id="calibLastBox"></div>
+
+      <div class="calib-run" id="calibRunBox">
+        <div class="calib-prog" id="calibProg" style="display:none">
+          <span class="sp"></span>
+          <span id="calibProgText">准备中…</span>
+        </div>
+        <div id="calibResult"></div>
+      </div>
+
+    </div>
+    <div class="setup-foot">
+      <span class="sethint" id="calibNote" style="margin-right:auto">校准会连续跑 6 个变异体，不会写入历史运行</span>
+      <button class="btn btn-ghost" id="calibCancel">取消</button>
+      <button class="btn btn-primary" id="calibStartBtn">开始校准</button>
+    </div>
+  </div>
+</div>
+
+<div class="setup-mask" id="genMask">
+  <div class="setup" style="width:min(820px,100%)">
+    <div class="setup-head">
+      <div>
+        <h3>AI 生成用例</h3>
+        <div class="sub">按被测目标的工具与知识库生成用例，经强校验后由你挑选入库</div>
+      </div>
+      <button class="xbtn" id="genClose">✕</button>
+    </div>
+    <div class="setup-body">
+
+      <div class="calib-config" id="genCfg">
+        <div class="setblock">
+          <label>参考目标（用于取工具与知识库上下文）</label>
+          <select id="genTarget"></select>
+        </div>
+        <div class="setblock">
+          <label>写入用例集</label>
+          <select id="genFile"></select>
+        </div>
+        <div class="setblock">
+          <label>生成条数</label>
+          <input type="number" id="genCount" value="8" min="1" max="30">
+        </div>
+        <div class="setblock">
+          <label>重点关注（可选）</label>
+          <input type="text" id="genFocus" placeholder="如：参数幻觉、槽位缺失">
+        </div>
+        <div class="setblock full">
+          <label>覆盖维度</label>
+          <div class="dimchips" id="genDims"></div>
+          <div class="sethint" id="genHint">至少选一个维度</div>
+        </div>
+      </div>
+
+      <div id="genResult"></div>
+
+    </div>
+    <div class="setup-foot">
+      <span class="sethint" id="genNote" style="margin-right:auto">生成结果不会自动入库，需勾选后保存</span>
+      <button class="btn btn-ghost" id="genCancel">关闭</button>
+      <button class="btn btn-primary" id="genStartBtn">开始生成</button>
+      <button class="btn btn-primary" id="genSaveBtn" style="display:none">保存选中</button>
+    </div>
+  </div>
+</div>
+
+<div class="drawer-mask" id="mask"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div class="grow">
+      <h3 id="dTitle">用例详情</h3>
+      <div class="sub" id="dSub"></div>
+    </div>
+    <button class="xbtn" id="dClose">✕</button>
+  </div>
+  <div class="drawer-body" id="dBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var $ = function(s){ return document.querySelector(s); };
+var DIM = {
+  functional:{label:'功能准确性',w:20}, tool_invocation:{label:'工具调用',w:20},
+  rag:{label:'RAG 检索质量',w:15}, multiturn:{label:'多轮对话',w:15},
+  safety:{label:'对抗与安全',w:15}, boundary:{label:'边界与异常',w:10},
+  performance:{label:'性能',w:5}
+};
+var STATUS = {pass:'通过', flaky:'不稳定', fail:'失败'};
+var CURRENT = null, FILTER = {status:'all', dim:'all', q:''}, POLL = null;
+var FOCUS_SEARCH = false;
+var ANIMATED = {};   /* 已播放过入场动画的运行，避免筛选重渲染时重复动画 */
+var META_TARGETS = [], META_CASES = [];
+var RESULT_TAB = 'overview';
+var RUNCTX = null, RUNREF = null, RUNSTART = 0;
+
+/* ---------------- 执行中进度看板 ---------------- */
+function ensureRunningView(total){
+  var view = $('#view');
+  view.innerHTML = '';
+  var box = el('div','prog');
+
+  var head = el('div','prog-head');
+  var h3 = el('h3');
+  h3.appendChild(document.createTextNode('执行中'));
+  var live = el('span','live');
+  live.innerHTML = '<span class="b"></span>LIVE';
+  h3.appendChild(live);
+  head.appendChild(h3);
+  head.appendChild(el('span','sub','用例完成后自动刷新，无需手动干预'));
+  var st = el('span','stream-tip');
+  st.style.marginLeft = 'auto';
+  st.innerHTML = '<span class="wave"><i></i><i></i><i></i><i></i></span>实时流式更新';
+  head.appendChild(st);
+  box.appendChild(head);
+
+  var main = el('div','prog-main');
+  var ring = el('div','pring'); ring.id = 'pring';
+  var pin = el('div','pin');
+  var pn = el('div','pn','0%'); pn.id = 'pPct';
+  pin.appendChild(pn);
+  pin.appendChild(el('div','pu','完成度'));
+  ring.appendChild(pin);
+  main.appendChild(ring);
+
+  var info = el('div','pinfo');
+  var stepper = el('div','stepper');
+  stepper.id = 'pStepper';
+  info.appendChild(stepper);
+
+  var meta = el('div','pmeta');
+  meta.id = 'pMeta';
+  info.appendChild(meta);
+  main.appendChild(info);
+  box.appendChild(main);
+
+  var sec = el('div','psec');
+  sec.appendChild(el('div','psec-t','维度分层进度'));
+  var dims = el('div','pdims'); dims.id = 'pDims';
+  sec.appendChild(dims);
+  sec.appendChild(el('div','psec-t','分层断言累计'));
+  var lc = el('div','lchips'); lc.id = 'pLayers';
+  sec.appendChild(lc);
+  box.appendChild(sec);
+
+  view.appendChild(box);
+  RUNREF = {
+    ring: $('#pring'), pct: $('#pPct'),
+    stepper: $('#pStepper'),
+    meta: $('#pMeta'), dims: $('#pDims'), layers: $('#pLayers')
+  };
+  resetProgress();
+  paintProgress(0);
+  buildStepper();
+}
+
+/* 节点式阶段流水线：连接目标 → 执行用例 → 判定汇总 → 完成 */
+var STAGES = [
+  {label:'连接目标', hint:'健康探测'},
+  {label:'执行用例', hint:''},
+  {label:'判定汇总', hint:'聚合维度与缺陷'},
+  {label:'完成',     hint:'生成报告'}
+];
+var STAGE_EL = [];
+
+function buildStepper(){
+  var box = RUNREF.stepper;
+  if (!box) return;
+  box.innerHTML = '';
+  STAGE_EL = [];
+  STAGES.forEach(function(st, i){
+    if (i > 0){
+      var ln = el('div','stepline');
+      ln.id = 'sl' + i;
+      box.appendChild(ln);
+    }
+    var cell = el('div','step');
+    cell.id = 'sp' + i;
+    var dot = el('div','dot');
+    dot.textContent = String(i + 1);
+    cell.appendChild(dot);
+    cell.appendChild(el('div','lb', st.label));
+    var cnt = el('div','cnt', '');
+    cnt.id = 'sc' + i;
+    cell.appendChild(cnt);
+    box.appendChild(cell);
+    STAGE_EL.push(cell);
+  });
+}
+
+function setStage(active){
+  for (var i = 0; i < STAGE_EL.length; i++){
+    var cell = STAGE_EL[i];
+    if (!cell) continue;
+    cell.className = 'step';
+    var dot = cell.querySelector('.dot');
+    if (i < active){
+      cell.classList.add('done');
+      if (dot) dot.textContent = '✓';
+    } else if (i === active){
+      cell.classList.add('active');
+      if (dot) dot.textContent = String(i + 1);
+    } else {
+      if (dot) dot.textContent = String(i + 1);
+    }
+    var ln = document.getElementById('sl' + i);
+    if (ln) ln.className = 'stepline' + (i <= active ? ' done' : '');
+  }
+}
+
+function updateRunning(p){
+  if (!RUNREF) ensureRunningView();
+  var done = p.done || 0, total = p.total || 0;
+  var ratio = total ? Math.min(1, done / total) : 0;
+
+  /* 百分比与环形改为平滑逼近，不再逐次跳变 */
+  setProgressTarget(ratio);
+
+  /* 阶段推进 */
+  var status = p.status || 'running';
+  var stage = 1;
+  if (status === 'starting') stage = 0;
+  else if (status === 'finished') stage = 3;
+  else if (total && done >= total) stage = 2;
+  else stage = 1;
+  setStage(stage);
+
+  var c1 = document.getElementById('sc1');
+  if (c1) c1.textContent = total ? (done + ' / ' + total) : '';
+
+  var results = p.results || [];
+  var fails = 0, flaky = 0, checks = 0, checksOk = 0;
+  var dimDone = {};
+  var layerStat = {L1:{ok:0,total:0}, L2:{ok:0,total:0}, L3:{ok:0,total:0}};
+  results.forEach(function(r){
+    var st = statusOf(r);
+    if (st === 'fail') fails++; else if (st === 'flaky') flaky++;
+    dimDone[r.dimension] = (dimDone[r.dimension] || 0) + 1;
+    (r.checks || []).forEach(function(c){
+      if (c.skipped) return;
+      checks++; if (c.passed) checksOk++;
+      var L = layerStat[c.layer];
+      if (L){ L.total++; if (c.passed) L.ok++; }
+    });
+  });
+
+  var elapsed = Math.round((Date.now() - RUNSTART) / 1000);
+  RUNREF.meta.innerHTML =
+    '<span>已完成 <b>' + done + '</b> / ' + (total || '–') + ' 条</span>' +
+    '<span>已用时 <b>' + elapsed + '</b> s</span>' +
+    '<span>断言 <b>' + checksOk + '</b> / ' + checks + '</span>' +
+    '<span class="' + (fails ? 'bad' : '') + '">失败 <b>' + fails + '</b></span>' +
+    '<span class="' + (flaky ? 'warn' : '') + '">不稳定 <b>' + flaky + '</b></span>';
+
+  /* 维度分层 */
+  var totals = (RUNCTX && RUNCTX.dimTotals) || {};
+  var keys = Object.keys(DIM).filter(function(k){ return totals[k]; });
+  var html = '';
+  keys.forEach(function(k){
+    var t = totals[k] || 0, d = dimDone[k] || 0;
+    var r2 = t ? d / t : 0;
+    html += '<div class="pdim' + (d >= t ? ' done' : '') + '">' +
+      '<div class="pn2">' + DIM[k].label + '</div>' +
+      '<div class="pb"><i style="width:' + (r2 * 100) + '%"></i></div>' +
+      '<div class="pv">' + d + '/' + t + '</div></div>';
+  });
+  RUNREF.dims.innerHTML = html;
+
+  /* 分层断言 */
+  var lhtml = '';
+  ['L1','L2','L3'].forEach(function(L){
+    var s = layerStat[L];
+    var r3 = s.total ? s.ok / s.total : 0;
+    lhtml += '<div class="lchip"><span class="lk">' + L + '</span>' +
+      '<span class="lbar"><i style="width:' + (r3 * 100) + '%"></i></span>' +
+      '<span class="lv">' + s.ok + '/' + s.total + '</span></div>';
+  });
+  RUNREF.layers.innerHTML = lhtml;
+}
+
+function el(tag, cls, text){
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+function toast(msg){
+  var t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._h); t._h = setTimeout(function(){ t.classList.remove('on'); }, 2400);
+}
+function fmt(n){ return n == null ? '–' : String(n); }
+function pct(n){ return n == null ? '–' : (Math.round(n*10)/10) + '%'; }
+function statusOf(r){ return r.status || (r.passed ? 'pass' : 'fail'); }
+function gradeColor(v){
+  v = v || 0;
+  return v >= 90 ? '#12855a' : v >= 75 ? '#2f6bed' : v >= 60 ? '#b4600a' : '#c02b2b';
+}
+function gradeClass(v){ v = v||0; return v >= 90 ? 'good' : v >= 60 ? '' : 'warn'; }
+
+/* ---------------- 流畅动效基础件 ---------------- */
+var RM = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* 通用缓动补间：用 rAF 而非定时器，跟随屏幕刷新率 */
+function tweenNumber(from, to, ms, onUpdate){
+  if (RM){ onUpdate(to); return; }
+  var start = 0;
+  var dur = Math.max(16, ms);
+  function frame(ts){
+    if (!start) start = ts;
+    var t = Math.min(1, (ts - start) / dur);
+    var e = 1 - Math.pow(1 - t, 3);          /* easeOutCubic */
+    onUpdate(from + (to - from) * e);
+    if (t < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* 视图切换：支持 View Transitions 时做交叉淡入，否则直接渲染 */
+function swapView(fn){
+  if (RM || !document.startViewTransition){ fn(); return; }
+  try { document.startViewTransition(fn); } catch(e){ fn(); }
+}
+
+/* 进度平滑引擎：把离散的轮询值连续补齐，形成「流式」视觉 */
+var SMOOTH = { shown: 0, target: 0, raf: 0 };
+
+function paintProgress(r){
+  if (!RUNREF || !RUNREF.ring) return;
+  var deg = Math.max(0, Math.min(1, r)) * 360;
+  RUNREF.ring.style.background =
+    'conic-gradient(#2f6bed ' + deg.toFixed(2) + 'deg, #eef1f5 ' + deg.toFixed(2) + 'deg)';
+  if (RUNREF.pct) RUNREF.pct.textContent = (Math.round(r * 1000) / 10).toFixed(1) + '%';
+  var c2 = document.getElementById('sc2');
+  if (c2) c2.textContent = Math.round(r * 100) + '%';
+}
+
+function smoothLoop(){
+  var d = SMOOTH.target - SMOOTH.shown;
+  if (Math.abs(d) < 0.0004){
+    SMOOTH.shown = SMOOTH.target;
+    paintProgress(SMOOTH.shown);
+    SMOOTH.raf = 0;
+    return;
+  }
+  SMOOTH.shown += d * 0.10;          /* 指数逼近，越接近越慢 */
+  paintProgress(SMOOTH.shown);
+  SMOOTH.raf = requestAnimationFrame(smoothLoop);
+}
+
+function setProgressTarget(r){
+  SMOOTH.target = Math.max(0, Math.min(1, r));
+  if (!SMOOTH.raf) SMOOTH.raf = requestAnimationFrame(smoothLoop);
+}
+
+function resetProgress(){
+  if (SMOOTH.raf){ cancelAnimationFrame(SMOOTH.raf); SMOOTH.raf = 0; }
+  SMOOTH.shown = 0; SMOOTH.target = 0;
+}
+
+/* 根据本次运行数据生成一句结论，替代让用户自己读数字 */
+function verdictOf(s){
+  var dims = (s.by_dimension || []).filter(function(d){ return d.total; });
+  var weakest = null;
+  dims.forEach(function(d){ if (!weakest || d.pass_rate < weakest.pass_rate) weakest = d; });
+  var failed = (s.total || 0) - (s.passed || 0);
+  var bits = [];
+
+  if (s.flaky > 0){
+    bits.push('存在 <b>' + s.flaky + '</b> 条不稳定用例，结论不可复现，建议提高采样次数后重跑');
+  }
+  if (weakest && weakest.pass_rate < 60){
+    bits.push('短板维度「<b>' + weakest.label + '</b>」仅 <b>' + pct(weakest.pass_rate) +
+      '</b>，已触发短板惩罚（总分 ×0.9）');
+  } else if (weakest && weakest.pass_rate < 85){
+    bits.push('最弱维度为「<b>' + weakest.label + '</b>」（' + pct(weakest.pass_rate) + '），仍有提升空间');
+  }
+  if (failed > 0 && s.flaky === 0){
+    bits.push('共 <b>' + failed + '</b> 条用例未通过，可在下方用例表逐条查看');
+  }
+  if (s.skipped_checks > 0){
+    bits.push('<b>' + s.skipped_checks + '</b> 项断言因目标能力不足被跳过，未计入通过率');
+  }
+
+  if (!bits.length){
+    return {cls:'ok', icon:'✓',
+      html:'全部维度健康，无失败、无不稳定用例，本次结果可作为该目标的<strong>发布基线</strong>。'};
+  }
+
+  var cls = 'warn', icon = '!';
+  if ((s.score || 0) >= 90 && s.flaky === 0) cls = 'ok', icon = '✓';
+  else if ((s.score || 0) < 60 || (weakest && weakest.pass_rate < 60)) cls = 'bad', icon = '✕';
+
+  return {cls: cls, icon: icon, html: bits.join('；') + '。'};
+}
+
+/* ---------------- 初始化 ---------------- */
+async function boot(){
+  /* 首屏骨架屏，避免空白等待 */
+  var v = $('#view');
+  if (v){
+    v.innerHTML = '';
+    var sk = el('div','hero');
+    var skRing = el('div','skeleton');
+    skRing.style.cssText = 'width:160px;height:160px;border-radius:50%;margin:0 auto';
+    sk.appendChild(skRing);
+    var skr = el('div');
+    for (var i = 0; i < 3; i++){
+      var b = el('div','skeleton sk-row');
+      b.style.width = (i === 0 ? 62 : i === 1 ? 84 : 46) + '%';
+      skr.appendChild(b);
+    }
+    sk.appendChild(skr);
+    v.appendChild(sk);
+    var sk2 = el('div','panel');
+    var skb = el('div','panel-body');
+    for (var j = 0; j < 6; j++){
+      var r2 = el('div','skeleton sk-row');
+      r2.style.width = (95 - j * 9) + '%';
+      skb.appendChild(r2);
+    }
+    sk2.appendChild(skb);
+    v.appendChild(sk2);
+  }
+
+  try{
+    var meta = await (await fetch('/api/meta')).json();
+    META_TARGETS = meta.targets || [];
+    META_CASES = meta.case_files || [];
+    var sel = $('#caseFile');
+    (meta.case_files||[]).forEach(function(f){
+      var o = el('option', null, f.file + '（' + f.count + ' 条）');
+      o.value = f.file; sel.appendChild(o);
+    });
+    var tsel = $('#target');
+    (meta.targets||[]).forEach(function(t){
+      var o = el('option', null, t.name); o.value = t.id; tsel.appendChild(o);
+    });
+    tsel.onchange = checkHealth;
+    sel.onchange = updateCaseHint;
+    $('#useJudge').checked = !!meta.judge_enabled;
+    $('#conc').value = (meta.runner && meta.runner.concurrency) || 4;
+    $('#samples').value = (meta.runner && meta.runner.samples) || 1;
+    updateCaseHint();
+    checkHealth();
+    loadHistory();
+  }catch(e){ toast('平台连接失败：' + e.message); }
+}
+
+async function checkHealth(){
+  var box = $('#health');
+  var hint = $('#targetHint');
+  try{
+    var tid = $('#target').value;
+    var r = await (await fetch('/api/targets/health' + (tid ? '?target_id=' + encodeURIComponent(tid) : ''))).json();
+    if (r.reachable === null){
+      box.className = 'pill';
+      box.innerHTML = '<span class="dot"></span>未做健康检查';
+      if (hint){ hint.className = 'sethint'; hint.textContent = '该目标未配置健康检查接口，可直接运行'; }
+      return;
+    }
+    box.className = 'pill ' + (r.reachable ? 'ok' : 'bad');
+    var txt = r.reachable ? '目标在线' : '目标离线';
+    if (r.reachable && r.latency_ms != null) txt += ' · ' + Math.round(r.latency_ms) + 'ms';
+    if (r.raw && r.raw.engine) txt += ' · ' + r.raw.engine;
+    if (r.raw && r.raw.fault_profile) txt += ' · ' + r.raw.fault_profile;
+    box.innerHTML = '<span class="dot"></span>' + txt;
+
+    if (hint){
+      if (r.reachable){
+        hint.className = 'sethint ok';
+        hint.textContent = '● 在线  ' + Math.round(r.latency_ms||0) + 'ms'
+          + (r.raw && r.raw.engine ? '  ·  引擎 ' + r.raw.engine : '')
+          + (r.raw && r.raw.fault_profile ? '  ·  故障注入 ' + r.raw.fault_profile : '');
+      } else {
+        hint.className = 'sethint bad';
+        hint.textContent = '● 离线  ' + (r.error || '目标不可达，请先启动被测服务');
+      }
+    }
+  }catch(e){
+    box.className = 'pill bad'; box.innerHTML = '<span class="dot"></span>平台异常';
+    if (hint){ hint.className = 'sethint bad'; hint.textContent = '● 平台接口异常'; }
+  }
+}
+
+function updateCaseHint(){
+  var sel = $('#caseFile');
+  var hint = $('#caseHint');
+  if (!sel || !hint) return;
+  var opt = sel.options[sel.selectedIndex];
+  hint.textContent = opt ? ('已选 ' + opt.text + '　覆盖 7 个测试维度') : '';
+}
+
+async function loadHistory(){
+  try{
+    var data = await (await fetch('/api/runs?limit=20')).json();
+    var box = $('#hist'); box.innerHTML = '';
+
+    var usage = $('#runUsage');
+    var total = (data.runs || []).length;
+    if (usage){
+      var kb = Math.round(((data.disk_bytes || 0) / 1024) * 10) / 10;
+      usage.textContent = total ? ('共 ' + total + ' 条记录，占用 ' + kb + ' KB') : '暂无运行记录';
+    }
+
+    if (!data.runs || !data.runs.length){
+      var em = el('div','meta','暂无记录');
+      em.style.cssText = 'font-size:11.5px;color:var(--faint);padding:4px 2px';
+      box.appendChild(em);
+      return;
+    }
+    data.runs.forEach(function(r){
+      var item = el('div','hist-item');
+      if (CURRENT && CURRENT.run_id === r.run_id) item.classList.add('active');
+      var l1 = el('div','l1');
+      var sc = el('span','sc', r.score == null ? '–' : r.score);
+      sc.style.color = gradeColor(r.score);
+      l1.appendChild(el('span','id', String(r.run_id).slice(9)));
+      l1.appendChild(sc);
+      item.appendChild(l1);
+      item.appendChild(el('div','meta',
+        (r.passed != null ? r.passed + '/' + r.total : '–') +
+        ' · ' + (r.fault_profile || '–') +
+        (r.flaky ? ' · 不稳 ' + r.flaky : '')));
+
+      var del = el('button','del', '✕');
+      del.title = '删除这条记录';
+      del.onclick = function(ev){
+        ev.stopPropagation();
+        askConfirm('删除这条运行记录？',
+          '运行 ' + r.run_id + ' 的记录将被永久删除，无法恢复。',
+          '删除', async function(){
+            await fetch('/api/runs/' + r.run_id, {method:'DELETE'});
+            if (CURRENT && CURRENT.run_id === r.run_id){ CURRENT = null; showEmptyView(); }
+            loadHistory();
+            toast('已删除');
+          });
+      };
+      item.appendChild(del);
+
+      item.onclick = async function(){
+        var run = await (await fetch('/api/runs/' + r.run_id)).json();
+        CURRENT = run;
+        swapView(function(){ render(run); });
+        loadHistory();
+      };
+      box.appendChild(item);
+    });
+  }catch(e){}
+}
+
+/* ---------------- 通用确认框 ---------------- */
+var CF_OK = null;
+function askConfirm(title, desc, okText, onOk){
+  $('#cfTitle').textContent = title;
+  $('#cfDesc').textContent = desc || '';
+  $('#cfOk').textContent = okText || '确认';
+  CF_OK = onOk;
+  $('#confirmMask').classList.add('on');
+}
+function closeConfirm(){
+  $('#confirmMask').classList.remove('on');
+  CF_OK = null;
+}
+$('#cfCancel').onclick = closeConfirm;
+$('#confirmMask').onclick = function(e){ if (e.target === $('#confirmMask')) closeConfirm(); };
+$('#cfOk').onclick = function(){
+  var fn = CF_OK;
+  closeConfirm();
+  if (fn) fn();
+};
+
+/* ---------------- 清空历史 ---------------- */
+$('#clearRunsBtn').onclick = function(){
+  askConfirm('清空全部历史运行？',
+    '所有运行记录（含用例明细与对比基线）都会被永久删除，无法恢复。用例集与目标配置不受影响。',
+    '全部清空', async function(){
+      try{
+        var r = await (await fetch('/api/runs', {method:'DELETE'})).json();
+        CURRENT = null;
+        showEmptyView();
+        loadHistory();
+        toast('已清空 ' + (r.removed || 0) + ' 条运行记录');
+      }catch(e){ toast('清空失败：' + e.message); }
+    });
+};
+
+/* 空视图 */
+function showEmptyView(){
+  var view = $('#view');
+  view.innerHTML = '';
+  var p = el('div','panel');
+  var e = el('div','empty');
+  e.appendChild(el('div','big','还没有测试结果'));
+  var s2 = el('div', null, '左侧点「＋ 添加目标」，选择用例集后开始测试');
+  s2.style.cssText = 'font-size:12px;color:var(--faint);margin-top:6px';
+  e.appendChild(s2);
+  p.appendChild(e);
+  view.appendChild(p);
+}
+
+/* ---------------- AI 模型设置 ---------------- */
+async function loadLLMConfig(){
+  try{
+    var c = await (await fetch('/api/config/llm')).json();
+    $('#llmUrl').value = c.api_url || '';
+    $('#llmModel').value = c.model || '';
+    var hint = $('#llmKeyHint');
+    if (c.has_key){
+      hint.className = 'sethint ok';
+      hint.textContent = '已保存 ' + (c.key_hint || '');
+    } else if (c.env_key){
+      hint.className = 'sethint ok';
+      hint.textContent = '使用环境变量中的密钥';
+    } else {
+      hint.className = 'sethint';
+      hint.textContent = '未设置 —— 不填则无法使用 L2 语义判定与用例生成';
+    }
+    $('#llmKey').value = '';
+  }catch(e){}
+}
+function openLLM(){
+  $('#llmTestMsg').textContent = '';
+  loadLLMConfig();
+  $('#llmMask').classList.add('on');
+}
+function closeLLM(){ $('#llmMask').classList.remove('on'); }
+$('#llmBtn').onclick = openLLM;
+$('#llmClose').onclick = closeLLM;
+$('#llmCancel').onclick = closeLLM;
+$('#llmMask').onclick = function(e){ if (e.target === $('#llmMask')) closeLLM(); };
+
+$('#llmTestBtn').onclick = async function(){
+  var msg = $('#llmTestMsg');
+  var btn = $('#llmTestBtn');
+  btn.disabled = true; btn.textContent = '测试中…';
+  msg.className = 'sethint'; msg.textContent = '正在请求模型…';
+  try{
+    var payload = {
+      api_url: $('#llmUrl').value.trim(),
+      model: $('#llmModel').value.trim(),
+      api_key: $('#llmKey').value.trim()
+    };
+    var r = await (await fetch('/api/config/llm/test', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)})).json();
+    if (r.ok){
+      msg.className = 'sethint ok';
+      msg.textContent = '● 连接成功  ' + Math.round(r.latency_ms) + 'ms  ·  ' + r.model
+        + (r.reply ? '  ·  模型回复「' + r.reply + '」' : '');
+    } else {
+      msg.className = 'sethint bad';
+      msg.textContent = '● ' + (r.error || '连接失败');
+    }
+  }catch(e){
+    msg.className = 'sethint bad'; msg.textContent = '● 请求异常：' + e.message;
+  }
+  btn.disabled = false; btn.textContent = '测试连接';
+};
+
+$('#llmSaveBtn').onclick = async function(){
+  var msg = $('#llmTestMsg');
+  var btn = $('#llmSaveBtn');
+  btn.disabled = true; btn.textContent = '保存中…';
+  try{
+    var payload = {
+      api_url: $('#llmUrl').value.trim(),
+      model: $('#llmModel').value.trim()
+    };
+    var key = $('#llmKey').value.trim();
+    if (key) payload.api_key = key;
+    var r = await (await fetch('/api/config/llm', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)})).json();
+    msg.className = 'sethint ok';
+    msg.textContent = '● 已保存，下次运行生效';
+    loadLLMConfig();
+    toast('AI 模型设置已保存');
+  }catch(e){
+    msg.className = 'sethint bad'; msg.textContent = '● 保存失败：' + e.message;
+  }
+  btn.disabled = false; btn.textContent = '保存';
+};
+
+/* ---------------- 接入新目标向导 ---------------- */
+function openWizard(){
+  $('#wizProbeMsg').textContent = '先探测，才能知道响应长什么样';
+  $('#wizProbeMsg').className = 'sethint';
+  $('#wizMap').style.display = 'none';
+  $('#wizSaveBtn').disabled = true;
+  $('#wizMask').classList.add('on');
+}
+function closeWizard(){ $('#wizMask').classList.remove('on'); }
+$('#openWizard').onclick = function(){ closeSetup(); openWizard(); };
+$('#wizClose').onclick = closeWizard;
+$('#wizCancel').onclick = closeWizard;
+$('#wizMask').onclick = function(e){ if (e.target === $('#wizMask')) closeWizard(); };
+
+function fillSelect(sel, keys, current, allowEmpty){
+  sel.innerHTML = '';
+  if (allowEmpty){
+    var o0 = el('option', null, '（不使用）'); o0.value = ''; sel.appendChild(o0);
+  }
+  (keys || []).forEach(function(k){
+    var o = el('option', null, k); o.value = k; sel.appendChild(o);
+  });
+  if (current) sel.value = current;
+}
+
+$('#wizProbeBtn').onclick = async function(){
+  var btn = $('#wizProbeBtn'), msg = $('#wizProbeMsg');
+  var base = $('#wizBase').value.trim();
+  if (!base){ msg.className='sethint bad'; msg.textContent = '● 请先填接口地址'; return; }
+  var headers = {};
+  var hraw = $('#wizHeaders').value.trim();
+  if (hraw){
+    try { headers = JSON.parse(hraw); }
+    catch(e){ msg.className='sethint bad'; msg.textContent = '● 请求头不是合法 JSON'; return; }
+  }
+  var bodyTpl = null;
+  var braw = $('#wizBody').value.trim();
+  if (braw){
+    try { bodyTpl = JSON.parse(braw); }
+    catch(e){ msg.className='sethint bad'; msg.textContent = '● 请求体模板不是合法 JSON'; return; }
+  }
+  var traceFields = [];
+  var traw = $('#wizTraceFields').value.trim();
+  if (traw){
+    try { traceFields = JSON.parse(traw); }
+    catch(e){ msg.className='sethint bad'; msg.textContent = '● 决策链字段不是合法 JSON'; return; }
+    if (!Array.isArray(traceFields)){ msg.className='sethint bad'; msg.textContent = '● 决策链字段必须是数组'; return; }
+  }
+  btn.disabled = true; btn.textContent = '探测中…';
+  msg.className = 'sethint'; msg.textContent = '正在发送探测消息…';
+  try{
+    var r = await (await fetch('/api/targets/probe', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({base_url: base, chat_path: $('#wizPath').value.trim() || '/chat',
+        headers: headers, request_template: bodyTpl || undefined,
+        trace_fields: traceFields.length ? traceFields : undefined})})).json();
+    if (!r.ok){
+      msg.className = 'sethint bad';
+      msg.textContent = '● 探测失败：' + (r.error || ('状态码 ' + r.status_code));
+      return;
+    }
+    msg.className = 'sethint ok';
+    msg.textContent = '● 接口连通  ' + Math.round(r.latency_ms) + 'ms  ·  返回 ' +
+      r.raw_keys.length + ' 个字段  ·  决策链路 ' + r.trace_count + ' 条';
+    var keys = r.paths || r.raw_keys || [];
+    var dl = $('#wizPaths'); dl.innerHTML = '';
+    keys.forEach(function(k){ var o = el('option'); o.value = k; dl.appendChild(o); });
+    $('#wizAnswer').value = r.guess.answer || '';
+    $('#wizTrace').value = r.guess.trace || '';
+    $('#wizCite').value = r.guess.citations || '';
+    $('#wizRaw').textContent = r.raw_preview || '';
+    $('#wizMap').style.display = '';
+    $('#wizSaveBtn').disabled = false;
+  }catch(e){
+    msg.className = 'sethint bad'; msg.textContent = '● 请求异常：' + e.message;
+  }
+  btn.disabled = false; btn.textContent = '探测接口';
+};
+
+$('#wizSaveBtn').onclick = async function(){
+  var btn = $('#wizSaveBtn');
+  var headers = {};
+  var hraw = $('#wizHeaders').value.trim();
+  if (hraw){ try { headers = JSON.parse(hraw); } catch(e){} }
+  var bodyTpl = null;
+  var braw = $('#wizBody').value.trim();
+  if (braw){ try { bodyTpl = JSON.parse(braw); } catch(e){ toast('请求体模板不是合法 JSON'); return; } }
+  var traceFields = [];
+  var traw = $('#wizTraceFields').value.trim();
+  if (traw){ try { traceFields = JSON.parse(traw); } catch(e){ toast('决策链字段不是合法 JSON'); return; } }
+  btn.disabled = true; btn.textContent = '保存中…';
+  try{
+    var payload = {
+      name: $('#wizName').value.trim() || '自定义目标',
+      base_url: $('#wizBase').value.trim(),
+      chat_path: $('#wizPath').value.trim() || '/chat',
+      headers: headers,
+      request_template: bodyTpl || undefined,
+      trace_fields: traceFields.length ? traceFields : undefined,
+      response_map: {
+        answer: $('#wizAnswer').value,
+        trace: $('#wizTrace').value,
+        citations: $('#wizCite').value
+      },
+      trace_normalizer: $('#wizNorm').value
+    };
+    var r = await (await fetch('/api/targets', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)})).json();
+    if (r.detail){ toast('保存失败：' + r.detail); btn.disabled = false; btn.textContent = '保存目标'; return; }
+    toast('目标已保存：' + r.target.name);
+    closeWizard();
+    await reloadTargets();
+    $('#target').value = r.target.id;
+    checkHealth();
+  }catch(e){
+    toast('保存失败：' + e.message);
+  }
+  btn.disabled = false; btn.textContent = '保存目标';
+};
+
+async function reloadTargets(){
+  try{
+    var meta = await (await fetch('/api/meta')).json();
+    var tsel = $('#target'); var keep = tsel.value;
+    tsel.innerHTML = '';
+    (meta.targets||[]).forEach(function(t){
+      var o = el('option', null, t.name); o.value = t.id; tsel.appendChild(o);
+    });
+    if (keep) tsel.value = keep;
+  }catch(e){}
+}
+
+/* ---------------- 新建测试弹层 ---------------- */
+function openSetup(){
+  $('#setupMask').classList.add('on');
+  checkHealth();
+}
+function closeSetup(){
+  $('#setupMask').classList.remove('on');
+}
+$('#newRunBtn').onclick = openSetup;
+$('#setupClose').onclick = closeSetup;
+$('#setupCancel').onclick = closeSetup;
+$('#setupMask').onclick = function(e){ if (e.target === $('#setupMask')) closeSetup(); };
+
+/* ---------------- 变异体校准 ---------------- */
+var CALIB_POLL = null;
+
+function openCalib(){
+  var tsel = $('#calibTarget'); tsel.innerHTML = '';
+  (META_TARGETS || []).forEach(function(t){
+    var o = el('option', null, t.name); o.value = t.id; tsel.appendChild(o);
+  });
+  if ($('#target').value) tsel.value = $('#target').value;
+
+  var csel = $('#calibCases'); csel.innerHTML = '';
+  (META_CASES || []).forEach(function(f){
+    var o = el('option', null, f.file + '（' + f.count + ' 条）');
+    o.value = f.file; csel.appendChild(o);
+  });
+  if ($('#caseFile').value) csel.value = $('#caseFile').value;
+
+  $('#calibCfg').style.display = '';
+  $('#calibRunBox').classList.remove('on');
+  $('#calibResult').innerHTML = '';
+  $('#calibProg').style.display = 'none';
+  $('#calibStartBtn').style.display = '';
+  $('#calibStartBtn').disabled = false;
+  $('#calibStartBtn').textContent = '开始校准';
+  $('#calibMask').classList.add('on');
+  offerLastCalibration();
+}
+function offerLastCalibration(){
+  var host = $('#calibLastBox');
+  if (!host) return;
+  host.innerHTML = '';
+  fetch('/api/calibrate/latest').then(function(r){ return r.json(); }).then(function(d){
+    if (!d || !(d.rows || []).length) return;
+    var box = host;
+    var wrap = el('div','calib-last');
+    var txt = el('div','t');
+    txt.innerHTML = '上次校准结果：<b>' + d.rows[0].total + '</b> 条用例 × <b>' +
+      (d.rows.length - 1) + '</b> 个变异体' +
+      (d.status === 'interrupted' ? '（执行中断，已完成 ' + d.done + '/' + d.total + '）' : '');
+    wrap.appendChild(txt);
+    var view = el('button','btn btn-ghost','查看结果');
+    view.onclick = function(){
+      $('#calibCfg').style.display = 'none';
+      host.innerHTML = '';
+      $('#calibRunBox').classList.add('on');
+      renderCalibResult(d, false);
+      $('#calibStartBtn').textContent = '重新校准';
+    };
+    wrap.appendChild(view);
+    box.appendChild(wrap);
+  }).catch(function(){});
+}
+
+function closeCalib(){
+  if (CALIB_POLL){ clearInterval(CALIB_POLL); CALIB_POLL = null; }
+  $('#calibMask').classList.remove('on');
+}
+$('#calibBtn').onclick = openCalib;
+$('#calibClose').onclick = closeCalib;
+$('#calibCancel').onclick = closeCalib;
+$('#calibMask').onclick = function(e){ if (e.target === $('#calibMask')) closeCalib(); };
+
+function renderCalibResult(res, partial){
+  var box = $('#calibResult');
+  box.innerHTML = '';
+
+  var sum = res.summary || {};
+  if (!partial){
+    var cards = el('div','calib-sum');
+    function card(k, v, cls){
+      var c = el('div','c');
+      c.appendChild(el('div','k', k));
+      c.appendChild(el('div','v' + (cls ? ' ' + cls : ''), v));
+      return c;
+    }
+    cards.appendChild(card('变异体', sum.mutants + ' 个'));
+    cards.appendChild(card('总检出用例', sum.caught_total, sum.caught_total > 0 ? 'ok' : ''));
+    cards.appendChild(card('跨维度影响', sum.false_positive_total,
+      sum.false_positive_total === 0 ? 'ok' : 'warn'));
+    cards.appendChild(card('精确命中', sum.zero_fp_mutants + ' 个',
+      sum.zero_fp_mutants === (sum.mutants || 1) ? 'ok' : 'warn'));
+    cards.appendChild(card('变异体均分', sum.mean_score));
+    box.appendChild(cards);
+  }
+
+  var t = el('table','calib-table');
+  t.innerHTML = '<thead><tr>' +
+    '<th style="width:130px">变异体</th><th style="width:74px">分数</th>' +
+    '<th style="width:80px">用例通过</th><th style="width:70px">检出</th>' +
+    '<th style="width:88px">跨维度</th><th>命中的用例</th></tr></thead>';
+  var tb = el('tbody');
+  (res.rows || []).forEach(function(r){
+    var tr = el('tr');
+    var base = r.profile === 'clean';
+    var hit = (r.caught || []).slice(0, 6).join(', ');
+    if ((r.caught || []).length > 6) hit += ' …';
+    tr.innerHTML =
+      '<td>' + (base ? '<b>' + r.label + '</b>' : r.label) +
+        '<div style="font-size:10.5px;color:#9aa2b1">' + (r.desc || '') + '</div></td>' +
+      '<td class="mono">' + (r.score == null ? '–' : r.score) + '</td>' +
+      '<td class="mono">' + r.passed + ' / ' + r.total + '</td>' +
+      '<td>' + (r.caught_count
+        ? '<span class="tag pass">' + r.caught_count + '</span>'
+        : '<span class="tag">0</span>') + '</td>' +
+      '<td>' + (r.fp_count
+        ? '<span class="tag minor">' + r.fp_count + '</span>'
+        : '<span class="tag pass">0</span>') + '</td>' +
+      '<td class="mono" style="font-size:11px;color:#5a6478">' + (hit || '–') + '</td>';
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+  box.appendChild(t);
+
+  var note = el('div','sethint');
+  note.style.marginTop = '10px';
+  note.innerHTML = '「检出」= 相对干净基线新失败的用例；「跨维度」= 新失败但维度不在该变异体预期范围内，' +
+    '需人工确认是真实连带影响还是判定偏差。未写入历史运行，校准结果不影响基线。';
+  box.appendChild(note);
+}
+
+$('#calibStartBtn').onclick = async function(){
+  var btn = $('#calibStartBtn');
+  btn.disabled = true;
+  btn.textContent = '校准中…';
+  $('#calibLastBox').innerHTML = '';
+  $('#calibRunBox').classList.add('on');
+  $('#calibProg').style.display = '';
+  $('#calibProgText').textContent = '正在启动…';
+  $('#calibResult').innerHTML = '';
+
+  var limit = parseInt($('#calibLimit').value, 10) || 0;
+  var payload = {
+    target_id: $('#calibTarget').value,
+    case_file: $('#calibCases').value,
+    limit: limit > 0 ? limit : null
+  };
+  var r;
+  try{
+    r = await (await fetch('/api/calibrate', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)})).json();
+  }catch(e){
+    toast('启动失败：' + e.message);
+    btn.disabled = false; btn.textContent = '开始校准';
+    return;
+  }
+  if (r.detail){ toast('启动失败：' + r.detail); btn.disabled = false; btn.textContent = '开始校准'; return; }
+
+  toast('校准开始：' + r.cases + ' 条用例 × ' + r.profiles + ' 个变异体');
+  if (CALIB_POLL) clearInterval(CALIB_POLL);
+  CALIB_POLL = setInterval(async function(){
+    try{
+      var st = await (await fetch('/api/calibrate/' + r.calibration_id + '/progress')).json();
+      if (st.status === 'failed'){
+        clearInterval(CALIB_POLL); CALIB_POLL = null;
+        $('#calibProg').style.display = 'none';
+        btn.disabled = false; btn.textContent = '重新校准';
+        toast('校准失败：' + (st.error || '未知'));
+        return;
+      }
+      if (st.status === 'finished'){
+        clearInterval(CALIB_POLL); CALIB_POLL = null;
+        $('#calibProg').style.display = 'none';
+        btn.textContent = '重新校准';
+        btn.disabled = false;
+        renderCalibResult(st.result || {});
+        toast('校准完成');
+        return;
+      }
+      $('#calibProgText').innerHTML =
+        '正在执行 <b>' + (st.current || '…') + '</b>　' + (st.done || 0) + ' / ' + (st.total || 6);
+      if ((st.rows || []).length){
+        renderCalibResult({rows: st.rows}, true);
+      }
+    }catch(e){}
+  }, 1400);
+};
+
+/* ---------------- AI 生成用例 ---------------- */
+var GEN_CASES = [];
+
+function buildDimChips(){
+  var box = $('#genDims');
+  if (box.childElementCount) return;
+  Object.keys(DIM).forEach(function(k, i){
+    var lb = el('label');
+    var cb = el('input'); cb.type = 'checkbox'; cb.value = k;
+    cb.checked = (k === 'functional' || k === 'tool_invocation' || k === 'boundary');
+    lb.appendChild(cb);
+    lb.appendChild(document.createTextNode(DIM[k].label));
+    box.appendChild(lb);
+  });
+}
+
+function openGen(){
+  buildDimChips();
+  var tsel = $('#genTarget'); tsel.innerHTML = '';
+  (META_TARGETS || []).forEach(function(t){
+    var o = el('option', null, t.name); o.value = t.id; tsel.appendChild(o);
+  });
+  if ($('#target').value) tsel.value = $('#target').value;
+
+  var fsel = $('#genFile'); fsel.innerHTML = '';
+  (META_CASES || []).forEach(function(f){
+    var o = el('option', null, f.file + '（' + f.count + ' 条）');
+    o.value = f.file; fsel.appendChild(o);
+  });
+  if ($('#caseFile').value) fsel.value = $('#caseFile').value;
+
+  $('#genResult').innerHTML = '';
+  $('#genCfg').style.display = '';
+  $('#genStartBtn').style.display = '';
+  $('#genStartBtn').disabled = false;
+  $('#genStartBtn').textContent = '开始生成';
+  $('#genSaveBtn').style.display = 'none';
+  $('#genMask').classList.add('on');
+}
+function closeGen(){ $('#genMask').classList.remove('on'); }
+$('#genBtn').onclick = openGen;
+$('#genClose').onclick = closeGen;
+$('#genCancel').onclick = closeGen;
+$('#genMask').onclick = function(e){ if (e.target === $('#genMask')) closeGen(); };
+
+$('#genStartBtn').onclick = async function(){
+  var btn = $('#genStartBtn');
+  var dims = [];
+  document.querySelectorAll('#genDims input:checked').forEach(function(c){ dims.push(c.value); });
+  if (!dims.length){ toast('请至少选择一个维度'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '生成中…';
+  $('#genNote').textContent = '正在调用模型生成用例，约 20-40 秒…';
+  $('#genResult').innerHTML = '';
+
+  try{
+    var r = await fetch('/api/cases/generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        target_id: $('#genTarget').value,
+        case_file: $('#genFile').value,
+        count: parseInt($('#genCount').value || '8', 10),
+        dimensions: dims,
+        focus: $('#genFocus').value.trim() || null
+      })
+    });
+    var data = await r.json();
+    if (data.detail){
+      toast('生成失败：' + data.detail);
+      btn.disabled = false; btn.textContent = '开始生成';
+      $('#genNote').textContent = '生成结果不会自动入库，需勾选后保存';
+      return;
+    }
+    GEN_CASES = data.accepted || [];
+    renderGenResult(data);
+    btn.textContent = '重新生成';
+    btn.disabled = false;
+    $('#genSaveBtn').style.display = GEN_CASES.length ? '' : 'none';
+    $('#genNote').textContent = data.has_meta
+      ? '已读取目标能力清单，生成结果带维度覆盖'
+      : '未读到目标 /meta，上下文较弱，建议人工复核';
+  }catch(e){
+    toast('生成失败：' + e.message);
+    btn.disabled = false; btn.textContent = '开始生成';
+  }
+};
+
+function renderGenResult(data){
+  var box = $('#genResult');
+  box.innerHTML = '';
+
+  if (!(data.accepted || []).length){
+    var e = el('div','empty');
+    e.appendChild(el('div','big','没有可用的生成结果'));
+    e.appendChild(el('div', null, '模型输出未通过校验，可调整维度或关注点后重试'));
+    box.appendChild(e);
+  } else {
+    var list = el('div','genlist');
+    data.accepted.forEach(function(c, i){
+      var item = el('div','genitem');
+      var cb = el('input'); cb.type = 'checkbox'; cb.checked = true;
+      cb.dataset.idx = String(i);
+      item.appendChild(cb);
+
+      var body = el('div');
+      var head = el('div','head');
+      head.appendChild(el('span','cid', c.id));
+      head.appendChild(el('span','tag d-' + c.dimension, (DIM[c.dimension]||{}).label || c.dimension));
+      head.appendChild(el('span','tag', c.priority || 'P1'));
+      body.appendChild(head);
+      body.appendChild(el('div','gt', c.title || ''));
+
+      var r1 = el('div','row');
+      r1.innerHTML = '<b>输入</b>　' + (c.input || '').replace(/\n/g, ' ').slice(0, 160);
+      body.appendChild(r1);
+
+      if (c.precondition && c.precondition.turns){
+        var r2 = el('div','row');
+        r2.innerHTML = '<b>前置</b>　' + c.precondition.turns.join(' / ').slice(0, 120);
+        body.appendChild(r2);
+      }
+
+      var ass = el('div','ass', JSON.stringify(c.assert));
+      body.appendChild(ass);
+
+      if (c.meta && c.meta.root_cause){
+        var r3 = el('div','row');
+        r3.innerHTML = '<b>根因</b>　' + c.meta.root_cause;
+        body.appendChild(r3);
+      }
+
+      item.appendChild(body);
+      list.appendChild(item);
+    });
+    box.appendChild(list);
+  }
+
+  if ((data.rejected || []).length){
+    var rj = el('div','rejbox');
+    rj.appendChild(el('div','t','被拒收 ' + data.rejected.length + ' 条（未通过强校验）'));
+    data.rejected.forEach(function(x){
+      var line = el('div','r', '#' + (x.index != null ? x.index : '–') + ' ' +
+        (x.title || '') + ' → ' + (x.reason || ''));
+      rj.appendChild(line);
+    });
+    box.appendChild(rj);
+  }
+
+  var foot = el('div','sethint');
+  foot.style.marginTop = '10px';
+  foot.textContent = '共生成 ' + (data.count || 0) + ' 条可用用例，勾选后点「保存选中」写入用例集。';
+  box.appendChild(foot);
+}
+
+$('#genSaveBtn').onclick = async function(){
+  var picked = [];
+  document.querySelectorAll('#genResult .genitem input:checked').forEach(function(cb){
+    var idx = parseInt(cb.dataset.idx, 10);
+    if (GEN_CASES[idx]) picked.push(GEN_CASES[idx]);
+  });
+  if (!picked.length){ toast('没有勾选用例'); return; }
+
+  var btn = $('#genSaveBtn');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try{
+    var r = await (await fetch('/api/cases/upsert', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ file: $('#genFile').value, cases: picked })
+    })).json();
+    toast('已写入 ' + picked.length + ' 条，现共 ' + (r.total || '?') + ' 条');
+    await refreshCaseFiles();
+    closeGen();
+  }catch(e){
+    toast('保存失败：' + e.message);
+  }
+  btn.disabled = false;
+  btn.textContent = '保存选中';
+};
+
+async function refreshCaseFiles(){
+  try{
+    var meta = await (await fetch('/api/meta')).json();
+    META_CASES = meta.case_files || [];
+    var sel = $('#caseFile');
+    var keep = sel.value;
+    sel.innerHTML = '';
+    META_CASES.forEach(function(f){
+      var o = el('option', null, f.file + '（' + f.count + ' 条）');
+      o.value = f.file; sel.appendChild(o);
+    });
+    if (keep) sel.value = keep;
+    updateCaseHint();
+  }catch(e){}
+}
+
+/* ---------------- 运行 ---------------- */
+$('#runBtn').onclick = async function(){
+  var btn = $('#runBtn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>执行中';
+  var body = {
+    target_id: $('#target').value,
+    case_file: $('#caseFile').value || 'seed.json',
+    use_judge: $('#useJudge').checked,
+    concurrency: parseInt($('#conc').value || '4', 10),
+    samples: parseInt($('#samples').value || '1', 10)
+  };
+  try{
+    var r = await (await fetch('/api/run', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)})).json();
+    if (r.error){ toast(r.error); resetBtn(); return; }
+    closeSetup();
+
+    /* 预取用例维度分布，用于绘制分层进度 */
+    RUNCTX = {dimTotals:{}};
+    try{
+      var cj = await (await fetch('/api/cases?file=' + encodeURIComponent(body.case_file))).json();
+      (cj.cases || []).forEach(function(c){
+        RUNCTX.dimTotals[c.dimension] = (RUNCTX.dimTotals[c.dimension] || 0) + 1;
+      });
+    }catch(e){}
+
+    RUNREF = null; RUNSTART = Date.now();
+    ensureRunningView(r.total);
+    updateRunning({done:0, total:r.total, results:[]});
+    poll(r.run_id, r.total);
+  }catch(e){ toast('启动失败：' + e.message); resetBtn(); }
+};
+
+function resetBtn(){
+  var btn = $('#runBtn'); btn.disabled = false; btn.textContent = '开始测试';
+}
+
+function poll(runId, total){
+  clearInterval(POLL);
+  var state = $('#runstate'); state.style.display = '';
+  POLL = setInterval(async function(){
+    try{
+      var p = await (await fetch('/api/run/' + runId + '/progress')).json();
+      state.innerHTML = '<span class="dot"></span>进度 ' + (p.done||0) + '/' + (p.total||total||0);
+      updateRunning(p);
+      if (p.status === 'finished' || p.status === 'failed'){
+        clearInterval(POLL); state.style.display = 'none'; resetBtn();
+        if (p.status === 'failed'){ toast('执行失败：' + (p.error||'未知')); return; }
+        /* 进度条推到 100%，节点走完，再切报告 */
+        setProgressTarget(1);
+        setStage(4);
+        setTimeout(async function(){
+          var run = await (await fetch('/api/runs/' + runId)).json();
+          CURRENT = run;
+          swapView(function(){ render(run); });
+          loadHistory();
+          toast('测试完成');
+        }, 900);
+      }
+    }catch(e){ clearInterval(POLL); resetBtn(); state.style.display = 'none'; }
+  }, 600);
+}
+
+/* ---------------- 渲染 ---------------- */
+function render(run){
+  CURRENT = run;
+  var s = run.summary || {};
+  var view = $('#view'); view.innerHTML = '';
+
+  /* hero */
+  var hero = el('div','hero');
+  var ring = el('div','ring');
+  var inner = el('div','inner');
+  var num = el('div','num', s.score == null ? '–' : Number(s.score).toFixed(1));
+  num.style.color = gradeColor(s.score);
+  inner.appendChild(num);
+  inner.appendChild(el('div','unit','加权质量分'));
+  ring.appendChild(inner);
+  hero.appendChild(ring);
+
+  /* 分数环与数字做一次缓动增长；同一轮运行重渲染（如筛选）时不再重复动画 */
+  var scoreVal = Number(s.score || 0);
+  function paintScore(v){
+    num.textContent = v.toFixed(1);
+    var dg = Math.max(0, Math.min(100, v)) * 3.6;
+    ring.style.background =
+      'conic-gradient(' + gradeColor(scoreVal) + ' ' + dg.toFixed(2) + 'deg, #eef1f5 ' + dg.toFixed(2) + 'deg)';
+  }
+  if (!RM && !ANIMATED[run.run_id]){
+    ANIMATED[run.run_id] = true;
+    tweenNumber(0, scoreVal, 780, paintScore);
+  } else {
+    paintScore(scoreVal);
+  }
+
+  var kpis = el('div','kpis');
+  function mk(k, v, cls, sub){
+    var d = el('div','kpi' + (cls ? ' ' + cls : ''));
+    d.appendChild(el('div','k', k));
+    var vv = el('div','v', v);
+    if (sub) vv.appendChild(el('small', null, ' ' + sub));
+    d.appendChild(vv);
+    return d;
+  }
+  kpis.appendChild(mk('用例通过', fmt(s.passed) + ' / ' + fmt(s.total), gradeClass(s.pass_rate)));
+  kpis.appendChild(mk('断言通过', fmt(s.checks_passed) + ' / ' + fmt(s.checks_total)));
+  kpis.appendChild(mk('通过率', pct(s.pass_rate)));
+  kpis.appendChild(mk('不稳定用例', fmt(s.flaky), s.flaky ? 'warn' : 'good'));
+  if (s.multi_sampled) kpis.appendChild(mk('稳定度', pct((s.stability||0)*100), (s.stability||0)>=0.99?'good':'warn'));
+  if (s.latency && s.latency.p95 != null) kpis.appendChild(mk('P95 延迟', Math.round(s.latency.p95), '', 'ms'));
+
+  var right = el('div','hero-right');
+  right.appendChild(kpis);
+  var vd = verdictOf(s);
+  if (vd){
+    var vbox = el('div','verdict ' + vd.cls);
+    vbox.appendChild(el('span','ic', vd.icon));
+    var vtx = el('div');
+    vtx.innerHTML = vd.html;
+    vbox.appendChild(vtx);
+    right.appendChild(vbox);
+  }
+  hero.appendChild(right);
+  view.appendChild(hero);
+
+  /* runbar */
+  var bar = el('div','runbar');
+  bar.appendChild(el('span','chip mode', s.mode_label || (s.mode === 'blackbox' ? '黑盒' : '灰盒')));
+  bar.appendChild(el('span', null, '运行 ' + run.run_id));
+  bar.appendChild(el('span', null, '· ' + (run.started_at||'')));
+  bar.appendChild(el('span', null, '· 耗时 ' + Math.round((run.duration_ms||0)/1000) + 's'));
+  bar.appendChild(el('span', null, '· 采样 ' + ((run.options&&run.options.samples)||1) + ' 次'));
+  bar.appendChild(el('span', null, '· 判定 ' + ((run.options&&run.options.use_judge) ? 'L1+L2+L3' : 'L1+L3')));
+  if (s.skipped_checks) bar.appendChild(el('span','chip','跳过 ' + s.skipped_checks));
+  if (s.flaky) bar.appendChild(el('span','chip flaky','不稳定 ' + s.flaky));
+  var exp = el('a', null, '导出 Markdown');
+  exp.href = '/api/runs/' + run.run_id + '/markdown';
+  exp.target = '_blank';
+  exp.style.marginLeft = 'auto';
+  exp.style.fontSize = '12px';
+  exp.style.fontWeight = '600';
+  bar.appendChild(exp);
+  view.appendChild(bar);
+
+  /* 分页：四个面板一次性构建，切换只改显示，零延迟且不丢筛选状态 */
+  var resultsAll = run.results || [];
+  var defectCount = (s.defects || []).length;
+  var failCount = resultsAll.filter(function(r){ return statusOf(r) === 'fail'; }).length;
+
+  var tabsBar = el('div','tabs');
+  var body = el('div'); body.id = 'resultBody';
+  var panes = {};
+  function mkPane(key){
+    var d = el('div','tabpane'); d.dataset.pane = key; body.appendChild(d); panes[key] = d; return d;
+  }
+  var pOverview = mkPane('overview');
+  var pCases = mkPane('cases');
+  var pDefects = mkPane('defects');
+  var pAdvice = mkPane('advice');
+  var pDiff = mkPane('diff');
+
+  var TAB_DEFS = [
+    ['overview', '总览', ''],
+    ['cases', '用例', String(resultsAll.length)],
+    ['defects', '缺陷', String(defectCount)],
+    ['advice', '改进建议', ''],
+    ['diff', '对比', '']
+  ];
+  var tabButtons = {};
+  TAB_DEFS.forEach(function(def){
+    var btn = el('button','tab');
+    btn.appendChild(document.createTextNode(def[1]));
+    var n = el('span','n' + (def[0] === 'defects' && defectCount ? ' bad' : ''), def[2]);
+    if (def[2]) btn.appendChild(n);
+    btn.onclick = function(){ setResultTab(def[0]); };
+    tabButtons[def[0]] = btn;
+    tabsBar.appendChild(btn);
+  });
+  view.appendChild(tabsBar);
+  view.appendChild(body);
+
+  var adviceBox = el('div'); adviceBox.id = 'adviceBox'; pAdvice.appendChild(adviceBox);
+  buildAdvicePane(run);
+
+  var diffBox = el('div'); diffBox.id = 'diffBox'; pDiff.appendChild(diffBox);
+  loadDiff(run.run_id);
+
+  /* 维度 */
+  var dims = (s.by_dimension || []).filter(function(d){ return d.total; });
+  if (dims.length){
+    var p = el('div','panel');
+    var h = el('div','panel-head');
+    h.appendChild(el('h3', null, '维度得分'));
+    h.appendChild(el('span','sub','权重向智能体特有风险倾斜，任一维度低于 60% 触发短板惩罚'));
+    p.appendChild(h);
+    var body = el('div','panel-body');
+    var wrap = el('div','dims');
+    var weakestKey = dims.reduce(function(a, b){ return a.pass_rate <= b.pass_rate ? a : b; }).key;
+    dims.slice().sort(function(a,b){
+      return ((DIM[b.key]&&DIM[b.key].w)||0) - ((DIM[a.key]&&DIM[a.key].w)||0);
+    }).forEach(function(d){
+      var isWeak = d.key === weakestKey && d.pass_rate < 85;
+      var row = el('div','dim' + (isWeak ? ' weak' : ''));
+      var name = el('div','name');
+      name.appendChild(document.createTextNode(d.label));
+      name.appendChild(el('em', null, ' ' + ((DIM[d.key]&&DIM[d.key].w)||0) + '%'));
+      if (isWeak) name.appendChild(el('span','wtag', '最弱'));
+      row.appendChild(name);
+      var cls = d.pass_rate >= 90 ? 'ok' : d.pass_rate >= 60 ? '' : (d.pass_rate >= 40 ? 'warn' : 'bad');
+      var b = el('div','bar ' + cls);
+      var fill = el('i'); fill.style.width = Math.max(2, d.pass_rate) + '%';
+      b.appendChild(fill);
+      if (d.pass_rate < 60 || isWeak) b.appendChild(el('span','mark'));
+      row.appendChild(b);
+      var v = el('div','val');
+      v.appendChild(el('b', null, pct(d.pass_rate)));
+      v.appendChild(document.createTextNode('  ' + d.passed + '/' + d.total));
+      row.appendChild(v);
+      wrap.appendChild(row);
+    });
+    body.appendChild(wrap); p.appendChild(body); pOverview.appendChild(p);
+  }
+
+  /* 三层 */
+  var layers = s.layers || [];
+  if (layers.length){
+    var p2 = el('div','panel');
+    var h2 = el('div','panel-head');
+    h2.appendChild(el('h3', null, '分层判定'));
+    h2.appendChild(el('span','sub','L1 看输出 / L2 看语义 / L3 看决策链路'));
+    p2.appendChild(h2);
+    var body2 = el('div','panel-body');
+    var grid = el('div','layers');
+    var desc = {L1:'关键词、格式、状态码、引用出处', L2:'大模型按评分标准判断语义正确性', L3:'计划与实际动作是否一致、数字是否可溯源'};
+    layers.forEach(function(L){
+      var box = el('div','layer');
+      var t = el('div','lt');
+      t.appendChild(el('b', null, L.label));
+      t.appendChild(el('span', null, L.total ? (L.passed + '/' + L.total + ' · ' + pct(L.pass_rate)) : '不适用'));
+      box.appendChild(t);
+      var cls = !L.total ? '' : (L.pass_rate >= 90 ? 'ok' : L.pass_rate >= 60 ? '' : 'bad');
+      var b = el('div','bar ' + cls);
+      var fill = el('i'); fill.style.width = L.total ? Math.max(2, L.pass_rate) + '%' : '0%';
+      b.appendChild(fill); box.appendChild(b);
+      box.appendChild(el('div','desc', desc[L.key] || ''));
+      grid.appendChild(box);
+    });
+    body2.appendChild(grid); p2.appendChild(body2); pOverview.appendChild(p2);
+  }
+
+  /* 用例表 */
+  var results = run.results || [];
+  var p3 = el('div','panel');
+  var h3 = el('div','panel-head');
+  h3.appendChild(el('h3', null, '用例结果'));
+  var subEl = el('span','sub', results.length + ' 条');
+  h3.appendChild(subEl);
+  p3.appendChild(h3);
+
+  var filters = el('div','filters');
+  var counts = {all:results.length, pass:0, flaky:0, fail:0};
+  results.forEach(function(r){ counts[statusOf(r)]++; });
+  [['all','全部'],['fail','失败'],['flaky','不稳定'],['pass','通过']].forEach(function(pair){
+    var k = pair[0], label = pair[1];
+    var b = el('button','fbtn' + (FILTER.status===k?' on':''), label + ' ' + counts[k]);
+    b.onclick = function(){ FILTER.status = k; render(CURRENT); };
+    filters.appendChild(b);
+  });
+  var dsel = el('select');
+  var oAll = el('option', null, '全部维度'); oAll.value = 'all'; dsel.appendChild(oAll);
+  Object.keys(DIM).forEach(function(k){
+    var o = el('option', null, DIM[k].label); o.value = k; dsel.appendChild(o);
+  });
+  dsel.value = FILTER.dim;
+  dsel.onchange = function(){ FILTER.dim = dsel.value; render(CURRENT); };
+  filters.appendChild(dsel);
+
+  var sw = el('div','searchwrap');
+  sw.appendChild(el('span','ic','⌕'));
+  var sinp = el('input');
+  sinp.id = 'caseSearch';
+  sinp.type = 'search';
+  sinp.placeholder = '搜索用例 / 根因';
+  sinp.value = FILTER.q || '';
+  sinp.oninput = function(){
+    FILTER.q = sinp.value;
+    FOCUS_SEARCH = true;
+    render(CURRENT);
+  };
+  sw.appendChild(sinp);
+  filters.appendChild(sw);
+  p3.appendChild(filters);
+
+  var q = (FILTER.q || '').trim().toLowerCase();
+  var rows = results.filter(function(r){
+    if (FILTER.status !== 'all' && statusOf(r) !== FILTER.status) return false;
+    if (FILTER.dim !== 'all' && r.dimension !== FILTER.dim) return false;
+    if (!q) return true;
+    var hay = ((r.id || '') + ' ' + (r.title || '') + ' ' + (r.root_cause || '')).toLowerCase();
+    return hay.indexOf(q) >= 0;
+  });
+  subEl.textContent = (rows.length === results.length)
+    ? results.length + ' 条'
+    : rows.length + ' / ' + results.length + ' 条';
+  var order = {fail:0, flaky:1, pass:2};
+  rows.sort(function(a,b){
+    var d = order[statusOf(a)] - order[statusOf(b)];
+    if (d) return d;
+    return String(a.id).localeCompare(String(b.id));
+  });
+
+  if (!rows.length){
+    var e = el('div','empty'); e.appendChild(el('div','big','没有符合条件的用例')); p3.appendChild(e);
+  } else {
+    var byId = {};
+    results.forEach(function(r){ byId[r.id] = r; });
+
+    var t = el('table');
+    t.innerHTML = '<thead><tr><th style="width:96px">用例</th><th style="width:90px">维度</th>' +
+      '<th>说明</th><th style="width:78px">结果</th><th style="width:56px">采样</th></tr></thead>';
+    var tb = el('tbody');
+    var frag = document.createDocumentFragment();   /* 批量插入，减少重排 */
+
+    rows.forEach(function(r){
+      var st = statusOf(r);
+      var tr = el('tr');
+      tr.dataset.cid = r.id;
+      tr.tabIndex = 0;
+      var tdId = el('td','id', r.id);
+      var tdDim = el('td');
+      tdDim.appendChild(el('span','tag d-' + r.dimension,
+        (DIM[r.dimension]||{}).label || r.dimension));
+      var tdT = el('td','title');
+      tdT.appendChild(el('div','t', r.title || ''));
+      if (r.root_cause) tdT.appendChild(el('div','cause', r.root_cause));
+      var tdS = el('td'); tdS.appendChild(el('span','tag ' + st, STATUS[st]));
+      var tdN = el('td','id', (r.samples||1) + '×');
+      tr.appendChild(tdId); tr.appendChild(tdDim); tr.appendChild(tdT);
+      tr.appendChild(tdS); tr.appendChild(tdN);
+      frag.appendChild(tr);
+    });
+
+    tb.appendChild(frag);
+    /* 事件委托：一个监听器管全部行，行数再多也不增加开销 */
+    tb.onclick = function(ev){
+      var tr = ev.target.closest ? ev.target.closest('tr') : null;
+      if (!tr || !tr.dataset.cid) return;
+      var rec = byId[tr.dataset.cid];
+      if (rec) openCase(rec);
+    };
+    tb.onkeydown = function(ev){
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      var tr = ev.target.closest ? ev.target.closest('tr') : null;
+      if (!tr || !tr.dataset.cid) return;
+      ev.preventDefault();
+      var rec = byId[tr.dataset.cid];
+      if (rec) openCase(rec);
+    };
+    t.appendChild(tb);
+    var twrap = el('div','tablewrap');
+    twrap.appendChild(t);
+    p3.appendChild(twrap);
+  }
+  pCases.appendChild(p3);
+
+  /* 缺陷清单 */
+  var defs = s.defects || [];
+  if (defs.length){
+    var dp = el('div','panel');
+    var dh = el('div','panel-head');
+    dh.appendChild(el('h3', null, '缺陷清单'));
+    dh.appendChild(el('span','sub','点用例查看详情'));
+    dp.appendChild(dh);
+    var t2 = el('table');
+    t2.innerHTML = '<thead><tr><th style="width:96px">用例</th><th style="width:86px">严重度</th><th>根因</th></tr></thead>';
+    var tb2 = el('tbody');
+    defs.forEach(function(d){
+      var tr = el('tr');
+      tr.onclick = function(){
+        var rec = results.find(function(x){ return x.id === d.case_id; });
+        if (rec) openCase(rec);
+      };
+      tr.innerHTML = '<td class="id">' + d.case_id + '</td>' +
+        '<td><span class="tag ' + (d.severity||'major') + '">' + (d.severity||'major') + '</span></td>' +
+        '<td>' + (d.root_cause||'–') + '</td>';
+      tb2.appendChild(tr);
+    });
+    t2.appendChild(tb2); dp.appendChild(t2); pDefects.appendChild(dp);
+  }
+
+  setResultTab(RESULT_TAB, true);
+
+  /* 搜索框重新聚焦（整页重渲染会丢失焦点） */
+  if (FOCUS_SEARCH){
+    var si = $('#caseSearch');
+    if (si){
+      si.focus();
+      try { si.setSelectionRange(si.value.length, si.value.length); } catch(e){}
+    }
+    FOCUS_SEARCH = false;
+  }
+}
+
+/* 结果分页切换 */
+function setResultTab(key, silent){
+  RESULT_TAB = key || 'overview';
+  var body = document.getElementById('resultBody');
+  if (!body) return;
+  var panes = body.querySelectorAll('.tabpane');
+  for (var i = 0; i < panes.length; i++){
+    panes[i].classList.toggle('on', panes[i].dataset.pane === RESULT_TAB);
+  }
+  var btns = document.querySelectorAll('.tabs .tab');
+  var order = ['overview', 'cases', 'defects', 'advice', 'diff'];
+  for (var j = 0; j < btns.length; j++){
+    btns[j].classList.toggle('on', order[j] === RESULT_TAB);
+  }
+  if (!silent && window.scrollY > 120){
+    window.scrollTo({ top: 0, behavior: RM ? 'auto' : 'smooth' });
+  }
+}
+
+/* ---------------- 改进建议 ---------------- */
+var ADVICE_RUN = null;
+
+function buildAdvicePane(run){
+  var box = document.getElementById('adviceBox');
+  if (!box) return;
+  ADVICE_RUN = run.run_id;
+  box.innerHTML = '<div class="adv-empty"><div class="big">正在读取…</div></div>';
+  fetch('/api/runs/' + run.run_id + '/advice')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d && d.cached && (d.advice || []).length) renderAdvice(d, run);
+      else renderAdviceIntro(run, d);
+    })
+    .catch(function(){ renderAdviceIntro(run, {}); });
+}
+
+function renderAdviceIntro(run, data){
+  var box = document.getElementById('adviceBox');
+  if (!box) return;
+  box.innerHTML = '';
+  var intro = el('div','adv-intro');
+  var txt = el('div','txt');
+  txt.innerHTML = '<b>基于本次运行的失败证据生成改进方案</b><br>' +
+    '每条方案都会绑定真实失败的用例与断言；引用不到证据的建议会被自动丢弃。';
+  intro.appendChild(txt);
+  var btn = el('button','btn btn-primary','生成改进方案');
+  btn.onclick = function(){ generateAdvice(run, btn); };
+  intro.appendChild(btn);
+  box.appendChild(intro);
+}
+
+function generateAdvice(run, btn){
+  btn.disabled = true;
+  btn.textContent = '生成中…';
+  fetch('/api/runs/' + run.run_id + '/advice', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:'{}'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.detail){ toast('生成失败：' + d.detail); btn.disabled = false; btn.textContent = '重试'; return; }
+      renderAdvice(d, run);
+      toast('已生成 ' + (d.advice || []).length + ' 条改进方案');
+    })
+    .catch(function(e){ toast('生成失败：' + e.message); btn.disabled = false; btn.textContent = '重试'; });
+}
+
+function renderAdvice(data, run){
+  var box = document.getElementById('adviceBox');
+  if (!box) return;
+  box.innerHTML = '';
+
+  var items = data.advice || [];
+  var intro = el('div','adv-intro');
+  var txt = el('div','txt');
+  txt.innerHTML = '共分析 <b>' + (data.evidence_count || 0) + '</b> 条失败用例，归纳出 <b>' +
+    items.length + '</b> 条根因级改进方案' +
+    ((data.rejected || []).length ? ('，另有 ' + data.rejected.length + ' 条因证据不足被丢弃') : '') +
+    '。每条方案均可复跑验证。';
+  intro.appendChild(txt);
+  var again = el('button','btn btn-ghost','重新生成');
+  again.onclick = function(){ generateAdvice(run, again); };
+  intro.appendChild(again);
+  box.appendChild(intro);
+
+  items.forEach(function(it, i){
+    var card = el('div','advcard');
+    var hd = el('div','hd');
+    hd.appendChild(el('div','idx', String(i + 1)));
+    hd.appendChild(el('div','cl', it.cluster));
+    var badges = el('div','badges');
+    var f = it.fix || {};
+    badges.appendChild(el('span','bg-layer', f.layer || '-'));
+    badges.appendChild(el('span','bg-effort', '工作量 ' + (f.effort || '-')));
+    hd.appendChild(badges);
+    card.appendChild(hd);
+
+    var bd = el('div','bd');
+
+    var r1 = el('div','row');
+    r1.appendChild(el('div','k','影响用例'));
+    var cs = el('div','cases');
+    (it.affected_cases || []).forEach(function(cid){ cs.appendChild(el('span', null, cid)); });
+    r1.appendChild(cs);
+    bd.appendChild(r1);
+
+    if ((it.evidence || []).length){
+      var r2 = el('div','row');
+      r2.appendChild(el('div','k','证据'));
+      var ul = el('ul');
+      it.evidence.forEach(function(e){ ul.appendChild(el('li', null, e)); });
+      r2.appendChild(ul);
+      bd.appendChild(r2);
+    }
+
+    var r3 = el('div','row');
+    r3.appendChild(el('div','k','改哪里' + (f.target ? '（' + f.target + '）' : '')));
+    r3.appendChild(el('div','patch', f.patch || '-'));
+    bd.appendChild(r3);
+
+    if (it.verify){
+      var r4 = el('div','row');
+      r4.appendChild(el('div','k','验证方式'));
+      r4.appendChild(el('div','verify', it.verify));
+      bd.appendChild(r4);
+    }
+
+    card.appendChild(bd);
+    box.appendChild(card);
+  });
+
+  if (!items.length){
+    var e = el('div','adv-empty');
+    e.appendChild(el('div','big','本次运行没有失败用例'));
+    e.appendChild(el('div', null, '或模型未能产出可落地的方案'));
+    box.appendChild(e);
+  }
+}
+
+/* ---------------- 对比 ---------------- */
+async function loadDiff(runId){
+  var box = $('#diffBox'); if (!box) return;
+  box.innerHTML = '';
+  var d;
+  try{ d = await (await fetch('/api/runs/' + runId + '/diff')).json(); }catch(e){ return; }
+  if (!d.available){
+    var emptyPanel = el('div','panel');
+    var emptyHead = el('div','panel-head');
+    emptyHead.appendChild(el('h3', null, '与基线对比'));
+    emptyHead.appendChild(el('span','chip','无可对比基线'));
+    emptyPanel.appendChild(emptyHead);
+    var emptyBody = el('div','panel-body');
+    emptyBody.appendChild(el('div','warnline',
+      '需要同一被测目标、同一用例集至少两次运行才能对比。' +
+      (d.reason ? '（' + d.reason + '）' : '')));
+    emptyPanel.appendChild(emptyBody);
+    box.appendChild(emptyPanel);
+    return;
+  }
+
+  var p = el('div','panel');
+  var h = el('div','panel-head');
+  h.appendChild(el('h3', null, '与基线对比'));
+  var vmap = {regressed:['回归','fail'], improved:['改善','ok'], unchanged:['无变化','']};
+  var verdict = vmap[d.verdict] || vmap.unchanged;
+  h.appendChild(el('span','chip ' + verdict[1], verdict[0]));
+  var link = el('a', null, '导出 Markdown');
+  link.href = '/api/runs/' + runId + '/diff/markdown'; link.target = '_blank';
+  link.style.marginLeft = 'auto'; link.style.fontSize = '12px';
+  h.appendChild(link);
+  p.appendChild(h);
+
+  var body = el('div','panel-body');
+  if (d.warning) body.appendChild(el('div','warnline','⚠ ' + d.warning));
+  var g = el('div','diffgrid');
+  var dl = d.delta;
+  function dcard(k, v, cls){
+    var c = el('div','dcard');
+    c.appendChild(el('div','k', k));
+    c.appendChild(el('div','v' + (cls?' '+cls:''), v));
+    return c;
+  }
+  g.appendChild(dcard('得分变化', (dl.score>=0?'+':'') + dl.score, dl.score>0?'up':(dl.score<0?'down':'')));
+  g.appendChild(dcard('通过率变化', (dl.pass_rate>=0?'+':'') + dl.pass_rate + 'pt', dl.pass_rate>0?'up':(dl.pass_rate<0?'down':'')));
+  g.appendChild(dcard('回归用例', d.counts.regressed, d.counts.regressed?'down':''));
+  g.appendChild(dcard('修复用例', d.counts.improved, d.counts.improved?'up':''));
+  g.appendChild(dcard('新增不稳定', d.counts.new_flaky, d.counts.new_flaky?'down':''));
+  body.appendChild(g);
+
+  var groups = [
+    ['regressed','回归（阻塞发布）','fail'],
+    ['new_flaky','新增不稳定（阻塞发布）','flaky'],
+    ['improved','缺陷已修复','ok'],
+    ['stabilized','转为稳定','ok']
+  ];
+  var rows = [];
+  groups.forEach(function(g2){
+    (d.transitions[g2[0]]||[]).forEach(function(x){ rows.push([g2[1], g2[2], x]); });
+  });
+  if (rows.length){
+    var t = el('table');
+    t.innerHTML = '<thead><tr><th style="width:170px">变化</th><th style="width:96px">用例</th><th>状态迁移 / 断言</th></tr></thead>';
+    var tb = el('tbody');
+    rows.forEach(function(row){
+      var label = row[0], cls = row[1], x = row[2];
+      var keys = (x.new_failed_checks||x.fixed_checks||[]).slice(0,3).join(' , ');
+      var tr = el('tr');
+      tr.innerHTML = '<td><span class="tag ' + cls + '">' + label + '</span></td>' +
+        '<td class="id">' + x.case_id + '</td>' +
+        '<td>' + (x.base_status||'') + (x.base_status?' → ':'') + (x.head_status||x.status||'') +
+        '<div style="font-size:11px;color:#9aa2b1">' + (keys||'') + '</div></td>';
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb); body.appendChild(t);
+  }
+  p.appendChild(body); box.appendChild(p);
+}
+
+/* ---------------- 抽屉 ---------------- */
+function openCase(r){
+  var st = statusOf(r);
+  $('#dTitle').textContent = r.id + ' · ' + (r.title || '');
+  $('#dSub').innerHTML = '<span class="tag ' + st + '">' + STATUS[st] + '</span> ' +
+    ((DIM[r.dimension]||{}).label || r.dimension) +
+    ' · ' + (r.samples||1) + ' 次采样' +
+    (r.pass_count != null ? '（通过 ' + r.pass_count + ' 次）' : '');
+  var body = $('#dBody'); body.innerHTML = '';
+
+  body.appendChild(el('div','sec-t','输入'));
+  body.appendChild(el('div','qa user', r.input || ''));
+
+  if (r.precondition && r.precondition.length){
+    body.appendChild(el('div','sec-t','前置轮次'));
+    r.precondition.forEach(function(t){
+      var d = el('div','qa');
+      d.textContent = 'Q: ' + t.input + '\nA: ' + (t.answer || '');
+      d.style.marginBottom = '6px';
+      body.appendChild(d);
+    });
+  }
+
+  body.appendChild(el('div','sec-t','回答'));
+  body.appendChild(el('div','qa', (r.response && r.response.answer) || '（无回答）'));
+
+  var checks = (r.checks || []).slice();
+  if (checks.length){
+    var kindOf = function(c){ return c.skipped ? 'skip' : (c.passed ? 'ok' : 'bad'); };
+    var groups = [
+      {key:'bad',  title:'未通过',                 cls:'bad',  items:[]},
+      {key:'ok',   title:'已通过',                 cls:'ok',   items:[]},
+      {key:'skip', title:'已跳过 · 目标能力不足',   cls:'skip', items:[]}
+    ];
+    checks.forEach(function(c){
+      var k = kindOf(c);
+      for (var i = 0; i < groups.length; i++){
+        if (groups[i].key === k){ groups[i].items.push(c); break; }
+      }
+    });
+
+    var failedN = groups[0].items.length;
+    body.appendChild(el('div','sec-t',
+      '断言明细（共 ' + checks.length + ' 项' + (failedN ? '，失败 ' + failedN + ' 项' : '') + '）'));
+
+    groups.forEach(function(g){
+      if (!g.items.length) return;
+      var head = el('div','grp ' + g.cls);
+      head.appendChild(el('span','gt', g.title));
+      head.appendChild(el('span','n', String(g.items.length)));
+      head.appendChild(el('span','line'));
+      body.appendChild(head);
+
+      var wrap = el('div','checks');
+      g.items.forEach(function(c){
+        var cls = kindOf(c);
+        var box = el('div','ck ' + cls);
+        box.appendChild(el('div','ic', c.skipped ? '–' : (c.passed ? '✓' : '✕')));
+        var right = el('div');
+        var lb = el('div','lb');
+        lb.appendChild(el('span','lay', c.layer || ''));
+        lb.appendChild(document.createTextNode(c.label || ''));
+        right.appendChild(lb);
+        if (!c.passed && !c.skipped){
+          right.appendChild(el('div','ev',
+            '期望：' + JSON.stringify(c.expected) + '　实际：' + JSON.stringify(c.actual)));
+        }
+        if (c.detail) right.appendChild(el('div','ev', c.detail));
+        box.appendChild(right);
+        wrap.appendChild(box);
+      });
+      body.appendChild(wrap);
+    });
+  }
+
+  var trace = (r.response && r.response.trace) || [];
+  if (trace.length){
+    body.appendChild(el('div','sec-t','决策链路（' + trace.length + ' 个事件）'));
+    var tl = el('div','tl');
+    trace.forEach(function(e){
+      var kind = e.type || 'step';
+      var box = el('div','ev ' + kind + (e.status === 'error' ? ' error' : ''));
+      var inner = el('div','box');
+      var head = kind.toUpperCase();
+      if (e.name) head += ' · ' + e.name;
+      if (e.status) head += ' · ' + e.status;
+      inner.appendChild(el('div','k', head));
+      var val = e.output || e.text || e.intent ||
+        (e.documents ? (e.documents.length + ' 个文档') : '') || JSON.stringify(e);
+      inner.appendChild(el('div','v', String(val).slice(0, 700)));
+      box.appendChild(inner);
+      tl.appendChild(box);
+    });
+    body.appendChild(tl);
+  }
+
+  if (r.sample_results && (r.samples||1) > 1){
+    body.appendChild(el('div','sec-t','各次采样'));
+    var wrap2 = el('div','checks');
+    r.sample_results.forEach(function(x, i){
+      var box = el('div','ck ' + (x.passed ? 'ok' : 'bad'));
+      box.appendChild(el('div','ic', x.passed ? '✓' : '✕'));
+      var right = el('div');
+      right.appendChild(el('div','lb', '第 ' + (i+1) + ' 次 · ' + (x.passed ? '通过' : '失败')));
+      if (x.failed && x.failed.length) right.appendChild(el('div','ev', x.failed.join(' , ')));
+      box.appendChild(right);
+      wrap2.appendChild(box);
+    });
+    body.appendChild(wrap2);
+  }
+
+  $('#mask').classList.add('on');
+  $('#drawer').classList.add('on');
+}
+function closeDrawer(){
+  $('#mask').classList.remove('on');
+  $('#drawer').classList.remove('on');
+}
+$('#mask').onclick = closeDrawer;
+$('#dClose').onclick = closeDrawer;
+document.addEventListener('keydown', function(e){
+  var tag = (e.target && e.target.tagName || '').toLowerCase();
+  var typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+  if (e.key === '/' && !typing){
+    var si = $('#caseSearch');
+    if (si){ e.preventDefault(); si.focus(); }
+    return;
+  }
+  if (e.key !== 'Escape') return;
+  if ($('#confirmMask').classList.contains('on')) { closeConfirm(); return; }
+  if ($('#calibMask').classList.contains('on')) { closeCalib(); return; }
+  if ($('#genMask').classList.contains('on')) { closeGen(); return; }
+  if ($('#wizMask').classList.contains('on')) { closeWizard(); return; }
+  if ($('#llmMask').classList.contains('on')) { closeLLM(); return; }
+  if ($('#setupMask').classList.contains('on')) { closeSetup(); return; }
+  closeDrawer();
+});
+
+boot();
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+

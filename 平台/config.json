@@ -1,0 +1,137 @@
+{
+  "targets": [
+    {
+      "id": "campus-clean",
+      "name": "校园智能助手（基线）",
+      "type": "http_json",
+      "base_url": "http://127.0.0.1:8000",
+      "chat_path": "/chat",
+      "reset_path": "/reset",
+      "timeout": 60,
+      "headers": {},
+      "request_template": {
+        "message": "{message}",
+        "session_id": "{session_id}"
+      },
+      "response_map": {
+        "answer": "answer",
+        "trace": "trace",
+        "citations": "citations",
+        "latency_ms": "latency_ms",
+        "fault_profile": "fault_profile"
+      },
+      "expected_fault_profile": "clean",
+      "capabilities": {
+        "trace": true,
+        "citations": true,
+        "tools": true
+      }
+    },
+    {
+      "id": "campus-blackbox",
+      "name": "校园助手（黑盒视图·不暴露 trace）",
+      "type": "http_json",
+      "base_url": "http://127.0.0.1:8000",
+      "chat_path": "/chat",
+      "reset_path": "/reset",
+      "timeout": 60,
+      "headers": {},
+      "request_template": {
+        "message": "{message}",
+        "session_id": "{session_id}"
+      },
+      "response_map": {
+        "answer": "answer",
+        "trace": "__unavailable__",
+        "citations": "__unavailable__",
+        "latency_ms": "latency_ms",
+        "fault_profile": "fault_profile"
+      },
+      "expected_fault_profile": "clean",
+      "capabilities": {
+        "trace": false,
+        "citations": false,
+        "tools": false
+      }
+    },
+    {
+      "id": "external-real-estate",
+      "name": "外部开源项目 · AI 房产助手（Docker/DeepSeek）",
+      "type": "http_json",
+      "base_url": "http://127.0.0.1:8082",
+      "chat_path": "/api/v1/chat",
+      "health_path": "/health",
+      "timeout": 120,
+      "headers": {
+        "X-API-Key": "ytest-secret-key"
+      },
+      "request_template": {
+        "message": "{message}",
+        "session_id": "{session_id}",
+        "stream": false,
+        "include_intermediate_steps": true
+      },
+      "response_map": {
+        "answer": "response",
+        "trace": "intermediate_steps",
+        "citations": "sources",
+        "latency_ms": "latency_ms"
+      },
+      "trace_normalizer": "langchain_steps",
+      "expected_fault_profile": "unknown",
+      "capabilities": {
+        "trace": true,
+        "citations": true,
+        "tools": true
+      }
+    },
+    {
+      "id": "astk-research",
+      "name": "外部 · LangGraph 研究助手（本地 8100）",
+      "type": "http_json",
+      "base_url": "http://127.0.0.1:8100",
+      "chat_path": "/research-assistant/stream",
+      "health_path": "/health",
+      "timeout": 120,
+      "headers": {},
+      "request_template": {
+        "message": "{message}"
+      },
+      "stream_mode": "sse",
+      "trace_from_messages": true,
+      "sse_map": {
+        "answer": {
+          "event": "token",
+          "field": "content"
+        }
+      },
+      "response_map": {
+        "answer": "content",
+        "trace": "",
+        "citations": ""
+      },
+      "capabilities": {
+        "trace": true,
+        "citations": false,
+        "tools": true
+      },
+      "expected_fault_profile": "unknown"
+    }
+  ],
+  "judge": {
+    "enabled": true,
+    "provider": "deepseek",
+    "api_url": "https://api.deepseek.com/v1/chat/completions",
+    "model": "deepseek-chat",
+    "api_key_env": "JUDGE_API_KEY",
+    "timeout": 60,
+    "temperature": 0.0
+  },
+  "runner": {
+    "concurrency": 4,
+    "retry": 1,
+    "case_timeout": 90,
+    "stop_on_fail": false,
+    "samples": 1
+  }
+}

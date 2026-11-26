@@ -1,0 +1,19 @@
+# 本地配置与密钥
+.env
+*.env
+!.env.example
+.secrets.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.uv-cache/
+.pytest_cache/
+.mypy_cache/
+
+# 编辑器/系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
